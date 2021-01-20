@@ -1,0 +1,397 @@
+#!/bin/bash
+
+EXE_NAME="nay"
+
+NAME="Not Another Yogurt"
+
+VERSION="0.1.0"
+
+HELP_MSG="$NAME $VERSION
+
+Usage: $EXE_NAME [<flags>] <command>
+
+Flags:
+  -v, --version  output version information and exit
+  -h, --help     display this help and exit
+
+Commands:
+   init              Create an empty setup
+   add               Add a directory/file to the setup setup
+   sync              Syncs the config files
+   pull_force        Pull the config from remote and REPLACES the local one
+   pkg               Intalls all the packages that can be installed with yay
+   nonpkg            Intalls all the packages that can not be instaled with yay
+   bootstrap         Sets up the configs files and software
+   ssh               Sets all the git origins to use ssh
+   full_sync         Executes pkg, nonpkg and sync
+"
+#########
+# MISC  #
+#########
+
+## trap ctrl-c and call ctrl_c()
+trap ctrl_c INT
+function ctrl_c() {
+        printf "\n\nAborted, exiting...\n"
+        exit 127
+}
+
+#########
+# Paths #
+#########
+
+# config 
+global_config_dir="$HOME/.config/$EXE_NAME"
+
+repos_file="$global_config_dir/repos"
+
+# Local
+local_dir="$HOME/.local/share/$EXE_NAME"
+
+repos_dir="$HOME/$local_dir/repos"
+
+# repo_dir=`currently proccessing repo dir`
+
+repo_files_dir="$repo_dir/files"
+repo_dirs="$repo_dir/dirs"
+repo_config="$repo_dir/config"
+
+#######
+# Aux #
+#######
+function require_init(){
+  if [ ! -d "$local_dir/.git" ] ; then
+    printf "Not initialized, please run '$EXE_NAME init' first\n"
+    exit 1
+  fi
+}
+
+############
+# Commands #
+############
+
+## ADD
+function add(){
+  require_init
+
+  if [ -z $1 ] ; then
+    echo "Nothing specified, nothing added."
+    exit 1
+  fi
+
+  while [ $# -gt 0 ]; do
+    rp="`realpath $1`" 
+
+    if [ ! -e "$rp" ] ; then
+      echo "No file on $rp" 
+      exit 1
+    fi
+
+    mkdir -p "$files_dir${rp%/*}" 
+    [ -e "$files_dir$rp" ] || cp -ur --preserve=timestamps --no-preserve=mode,ownership "$rp" "$files_dir${rp%/*}"
+
+    # TODO do not add subdirs of already included dirs
+    if [ -d "$rp" ] ; then
+      grep "$rp" $repo_dirs &> /dev/null || echo "$rp" >> $repo_dirs
+    fi
+
+    shift
+  done
+}
+
+## PULL 
+function pull_force() {
+  require_init
+
+  git -C "$local_dir" fetch -q || exit $?
+
+  git -C "$local_dir" reset --hard &>/dev/null || exit $?
+
+  printf "\nlocal    cache <- remote\n"
+  if [ -z "`git -C "$local_dir" rev-list HEAD..origin/master`" ] ; then
+    printf "No changes\n"
+  else
+    git -C "$local_dir" diff --name-status HEAD origin/master
+    git -C "$local_dir" pull origin master &>/dev/null || exit $?
+
+    for FILE in $(git -C "$local_dir" ls-files) ; do
+      TIME=$(git -C "$local_dir" log --pretty=format:%cd -n 1 --date=iso -- "$local_dir/$FILE")
+      TIME=`echo $TIME | sed 's/-//g;s/ //;s/://;s/:/\./;s/ .*//'`
+      touch -m -t "$TIME" "$local_dir/$FILE"
+    done
+  fi
+
+  printf "\nlocal <- cache    remote\n"
+  find "$files_dir" | while IFS= read -r backup; do
+    real="/`realpath --relative-to="$files_dir" "$backup"`"
+
+    [ -d $backup ] && continue 
+
+    if [ -f $real ] ; then
+      if ! cmp $real $backup &> /dev/null ; then
+        printf "M %s\n" "$real"
+        cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" &> /dev/null ||\
+          (sudo cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" || exit $?)
+      fi
+    elif [ ! -d $real ] ; then
+      printf "A %s\n" "$real"
+      mkdir -p "${real%/*}"
+      cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" ||\
+        (sudo cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" || exit $?)
+    fi
+  done
+
+  $local_dir/sync_hook
+}
+
+## SYNC
+function sync() {
+  require_init
+
+  if git -C "$local_dir" rebase --show-current-patch &>/dev/null ; then
+    mergeinfo=`git -c core.editor=true -C "$local_dir" rebase --continue 2>&1`
+    if [ $? -ne 0 ] ; then
+      echo "$mergeinfo"
+      exit $?
+    else
+      echo "Conflicts resolved, proceeding with the synchronization"
+    fi
+  fi
+  
+  git -C "$local_dir" fetch -q || exit $?
+
+  printf "\nlocal -> cache    remote\n"
+  cat $repo_dirs | while read dir ; do
+    add $dir/*
+  done
+
+  for FILE in $(git -C "$files_dir" ls-tree -r --name-only origin/master) ; do
+    real=/$FILE
+    backup=$files_dir/$FILE
+
+    if [ -f $real ] ; then
+      mkdir -p "${backup%/*}"
+      cp -u --preserve=timestamps --no-preserve=mode,ownership "$real" "$backup"
+    elif [ ! -d $real ] ; then
+      rm "$backup" &>/dev/null
+    else
+      echo "Expected file or nothing on'$real' but found a directory \nPlease rename the directory and run '$EXE_NAME sync' again\n"
+      exit 1
+    fi
+  done
+
+  git -C "$local_dir" add . &>/dev/null
+  git -C "$local_dir" commit -m "`hostname`" &>/dev/null
+
+  if [ -z "`git -C "$local_dir" rev-list origin/master..HEAD`" ] ; then
+    printf "No changes\n"
+  else
+    git -C "$local_dir" diff --name-status  HEAD~1 HEAD
+  fi
+
+  printf "\nlocal    cache <- remote\n"
+  if [ -z "`git -C "$local_dir" rev-list HEAD..origin/master`" ] ; then
+    printf "No changes\n"
+  else
+    git -C "$local_dir" diff --name-status HEAD origin/master
+    git -C "$local_dir" rebase origin/master &>/dev/null
+    if git -C "$local_dir" rebase --show-current-patch &>/dev/null ; then
+      echo
+      git -C "$local_dir" rebase --continue
+      exit $?
+    fi
+
+    for FILE in $(git -C "$local_dir" ls-files) ; do
+      TIME=$(git -C "$local_dir" log --pretty=format:%cd -n 1 --date=iso -- "$local_dir/$FILE")
+      TIME=`echo $TIME | sed 's/-//g;s/ //;s/://;s/:/\./;s/ .*//'`
+      touch -m -t "$TIME" "$local_dir/$FILE"
+    done
+  fi
+
+  printf "\nlocal    cache -> remote\n"
+  if [ -z "`git -C "$local_dir" rev-list origin/master..HEAD`" ] ; then
+    printf "No changes\n"
+  else
+    git -C "$local_dir" diff --name-status origin/master HEAD
+    git -C "$local_dir" push origin master -q || exit $?
+  fi
+
+  printf "\nlocal <- cache    remote\n"
+  export change=0
+
+  while IFS= read -r backup; do
+    [ -d $backup ] && continue 
+
+    real="/`realpath --relative-to="$files_dir" "$backup"`"
+
+    if [ -f $real ] ; then
+        if [ $backup -nt $real ] ;then
+          if ! cmp -s $backup $real ; then
+            export change=1 
+            printf "M %s\n" "$real"
+            cp -u --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" &> /dev/null ||\
+              (sudo cp -u --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" || exit $?)
+          else
+            export change=1
+            printf "T %s\n" "$real"
+            touch -r "$backup" "$real" || (sudo touch -r "$backup" "$real" || exit $?)
+          fi
+        # elif [ $backup -ot $real ] ; then
+        #   printf "T %s\n" "$real"
+        #   if cmp -s $backup $real ; then 
+        #     touch -r "$backup" "$real" || (sudo touch -r "$backup" "$real" || exit $?)
+        #   fi
+        fi
+    elif [ ! -d $real ] ; then
+      export change=1
+      printf "A %s\n" "$real"
+      mkdir -p "${real%/*}"
+      cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" ||\
+        (sudo cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" || exit $?)
+    fi
+  done << EOF
+`find "$files_dir"`
+EOF
+
+  if [ $change -eq 0 ] ; then
+    printf "No changes\n"
+  fi
+
+  $local_dir/sync_hook
+}
+
+## INIT 
+function init() {
+  if [ -d "$local_dir/.git" ] ; then
+    printf "Already initialized\nTry '$EXE_NAME --help' for more information.\n"
+    return 1
+  fi
+
+  if [ -d "$local_dir" ] ; then
+    printf "Dirty directory remove?[Y/n]:"
+    read awns
+    [ ! -z $awns ] && [ $awns != "y" ] && exit 0
+    rm -rf "$local_dir"
+    printf "\n"
+  fi
+  mkdir -p $config_dir  
+  mkdir -p $local_dir
+  repo=$1
+  if [ -z $repo ] ; then
+    printf "Enter a valid (e.g. empty) git repository to keep your setup (ssh and private recomended):\n"
+    read repo
+  fi
+
+  git -C "$local_dir" init &&\
+  git -C "$local_dir" remote add origin $repo
+  ecode=$?
+  [ $ecode -ne 0 ] && exit $?
+
+  git pull origin master
+
+  printf "\nInitialized!\n"
+}
+
+function pkg() {
+
+  yay -v &> /dev/null
+  if [ $? -ne 0 ] ; then
+    echo ":: yay not installed, installing..."
+    sudo pacman -Syu
+    sudo pacman -S --noconfirm --needed git base-devel 
+    git config --global pull.rebase true
+    cd /tmp
+    git clone https://aur.archlinux.org/yay.git
+    cd yay
+    makepkg -si
+    echo
+    yay -S reflector
+  fi
+
+  yay -Syu
+
+  printf "\n-> updating mirror list\n"
+  sudo reflector --verbose --latest 10 --sort rate --save /etc/pacman.d/mirrorlist
+
+  echo "-> installing all packages"
+  # yay -S --needed --noredownload  --norebuild \
+  #        --batchinstall --sudoloop \
+  #        `cat "$local_dir/packages" | sed -e '/^[ \t]*#/d' | sed '/^$/d'`
+  for pkg in `cat "$local_dir/packages" | sed -e '/^[ \t]*#/d' | sed '/^$/d'` ; do
+    if ! yay -Q "$pkg" &> /dev/null ; then
+      if ! yay -Qg "$pkg" &> /dev/null ; then
+        yay -S --noconfirm --needed --noredownload --answerclean --sudoloop "$pkg"
+      fi
+    fi
+  done
+}
+
+function nonpkg() {
+  $local_dir/nonpkg
+}
+
+function bootstrap() {
+  init
+  echo
+  echo "dotfiles"
+  pull_force 
+  echo "pkgs"
+  pkg
+  echo
+  echo "non pkgs"
+  nonpkg
+  $local_dir/bootstrap
+}
+
+function ssh(){
+  for dir in "$HOME/.build/"* ; do
+    cd "$dir"
+    git remote set-url origin `git remote get-url origin | sed 's,https://github.com/,git@github.com:,g'`
+  done
+}
+
+function full_sync() {
+  require_init
+  echo "------------"
+  echo "| Packages |"
+  echo "------------"
+  pkg
+  echo "----------------"
+  echo "| Non Packages |"
+  echo "----------------"
+  nonpkg
+  echo "---------"
+  echo "| Files |"
+  echo "---------"
+  sync
+}
+########
+# Main #
+########
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help)
+      echo "$HELP_MSG"
+      exit 0
+      ;;
+    -v|--version)
+      echo "$VERSION"
+      exit 0
+      ;;
+    init|ssh|add|sync|pkg|nonpkg|script|bootstrap|pull_force|full_sync)
+      $@  
+      exit $?
+      ;;
+    -*)
+      echo "'$1' is not a $EXE_NAME flag. See '$EXE_NAME --help'."
+      exit 2
+      ;;
+    *)
+      echo "'$1' is not a $EXE_NAME command. See '$EXE_NAME --help'."
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+printf "missing command\nTry '$EXE_NAME --help' for more information.\n"
