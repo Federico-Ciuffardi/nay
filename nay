@@ -48,20 +48,25 @@ repos_file="$global_config_dir/repos"
 # Local
 local_dir="$HOME/.local/share/$EXE_NAME"
 
-repos_dir="$HOME/$local_dir/repos"
-
-# repo_dir=`currently proccessing repo dir`
-
-repo_files_dir="$repo_dir/files"
-repo_dirs="$repo_dir/dirs"
-repo_config="$repo_dir/config"
+repos_dir="$local_dir/repos"
 
 #######
 # Aux #
 #######
-function require_init(){
-  if [ ! -d "$local_dir/.git" ] ; then
-    printf "Not initialized, please run '$EXE_NAME init' first\n"
+function set_repo_dir(){
+  if [ -z $1 ] ; then 
+    echo "No repo provided use of the following or init a new one."
+    ls "$repos_dir"
+    exit 1
+  fi
+  repo_dir="$repos_dir/$1"
+  repo_file_dir="$repo_dir/files"
+  repo_dirs="$repo_dir/dirs"
+  repo_mnt="$repo_dir/mnt"
+  repo_sync_hook="$repo_dir/sync_hook"
+  repo_config="$repo_dir/config"
+  if [ ! -d "$repo_dir" ] ; then
+    printf "Not initialized, please initialize it with '$EXE_NAME init' first\n"
     exit 1
   fi
 }
@@ -72,7 +77,8 @@ function require_init(){
 
 ## ADD
 function add(){
-  require_init
+  set_repo_dir $1
+  shift
 
   if [ -z $1 ] ; then
     echo "Nothing specified, nothing added."
@@ -87,8 +93,8 @@ function add(){
       exit 1
     fi
 
-    mkdir -p "$files_dir${rp%/*}" 
-    [ -e "$files_dir$rp" ] || cp -ur --preserve=timestamps --no-preserve=mode,ownership "$rp" "$files_dir${rp%/*}"
+    mkdir -p "$repo_file_dir${rp%/*}" 
+    [ -e "$repo_file_dir$rp" ] || cp -ur --preserve=timestamps --no-preserve=mode,ownership "$rp" "$repo_file_dir${rp%/*}"
 
     # TODO do not add subdirs of already included dirs
     if [ -d "$rp" ] ; then
@@ -101,7 +107,7 @@ function add(){
 
 ## PULL 
 function pull_force() {
-  require_init
+  set_repo_dir $1
 
   git -C "$local_dir" fetch -q || exit $?
 
@@ -122,8 +128,8 @@ function pull_force() {
   fi
 
   printf "\nlocal <- cache    remote\n"
-  find "$files_dir" | while IFS= read -r backup; do
-    real="/`realpath --relative-to="$files_dir" "$backup"`"
+  find "$repo_file_dir" | while IFS= read -r backup; do
+    real="/`realpath --relative-to="$repo_file_dir" "$backup"`"
 
     [ -d $backup ] && continue 
 
@@ -141,15 +147,15 @@ function pull_force() {
     fi
   done
 
-  $local_dir/sync_hook
+  sh $repo_sync_hook
 }
 
 ## SYNC
 function sync() {
-  require_init
+  set_repo_dir $1
 
-  if git -C "$local_dir" rebase --show-current-patch &>/dev/null ; then
-    mergeinfo=`git -c core.editor=true -C "$local_dir" rebase --continue 2>&1`
+  if git -C "$repo_dir" rebase --show-current-patch &>/dev/null ; then
+    mergeinfo=`git -c core.editor=true -C "$repo_dir" rebase --continue 2>&1`
     if [ $? -ne 0 ] ; then
       echo "$mergeinfo"
       exit $?
@@ -158,16 +164,18 @@ function sync() {
     fi
   fi
   
-  git -C "$local_dir" fetch -q || exit $?
+  git -C "$repo_dir" fetch -q || exit $?
 
   printf "\nlocal -> cache    remote\n"
-  cat $repo_dirs | while read dir ; do
-    add $dir/*
-  done
+  if [ -d $repo_dirs ] ; then
+    cat $repo_dirs | while read dir ; do
+      add $dir/*
+    done
+  fi
 
-  for FILE in $(git -C "$files_dir" ls-tree -r --name-only origin/master) ; do
+  for FILE in $(git -C "$repo_file_dir" ls-tree -r --name-only origin/master) ; do
     real=/$FILE
-    backup=$files_dir/$FILE
+    backup=$repo_file_dir/$FILE
 
     if [ -f $real ] ; then
       mkdir -p "${backup%/*}"
@@ -180,40 +188,40 @@ function sync() {
     fi
   done
 
-  git -C "$local_dir" add . &>/dev/null
-  git -C "$local_dir" commit -m "`hostname`" &>/dev/null
+  git -C "$repo_dir" add . &>/dev/null
+  git -C "$repo_dir" commit -m "`hostname`" &>/dev/null
 
-  if [ -z "`git -C "$local_dir" rev-list origin/master..HEAD`" ] ; then
+  if [ -z "`git -C "$repo_dir" rev-list origin/master..HEAD`" ] ; then
     printf "No changes\n"
   else
-    git -C "$local_dir" diff --name-status  HEAD~1 HEAD
+    git -C "$repo_dir" diff --name-status  HEAD~1 HEAD
   fi
 
   printf "\nlocal    cache <- remote\n"
-  if [ -z "`git -C "$local_dir" rev-list HEAD..origin/master`" ] ; then
+  if [ -z "`git -C "$repo_dir" rev-list HEAD..origin/master`" ] ; then
     printf "No changes\n"
   else
-    git -C "$local_dir" diff --name-status HEAD origin/master
-    git -C "$local_dir" rebase origin/master &>/dev/null
-    if git -C "$local_dir" rebase --show-current-patch &>/dev/null ; then
+    git -C "$repo_dir" diff --name-status HEAD origin/master
+    git -C "$repo_dir" rebase origin/master &>/dev/null
+    if git -C "$repo_dir" rebase --show-current-patch &>/dev/null ; then
       echo
-      git -C "$local_dir" rebase --continue
+      git -C "$repo_dir" rebase --continue
       exit $?
     fi
 
-    for FILE in $(git -C "$local_dir" ls-files) ; do
-      TIME=$(git -C "$local_dir" log --pretty=format:%cd -n 1 --date=iso -- "$local_dir/$FILE")
+    for FILE in $(git -C "$repo_dir" ls-files) ; do
+      TIME=$(git -C "$repo_dir" log --pretty=format:%cd -n 1 --date=iso -- "$repo_dir/$FILE")
       TIME=`echo $TIME | sed 's/-//g;s/ //;s/://;s/:/\./;s/ .*//'`
-      touch -m -t "$TIME" "$local_dir/$FILE"
+      touch -m -t "$TIME" "$repo_dir/$FILE"
     done
   fi
 
   printf "\nlocal    cache -> remote\n"
-  if [ -z "`git -C "$local_dir" rev-list origin/master..HEAD`" ] ; then
+  if [ -z "`git -C "$repo_dir" rev-list origin/master..HEAD`" ] ; then
     printf "No changes\n"
   else
-    git -C "$local_dir" diff --name-status origin/master HEAD
-    git -C "$local_dir" push origin master -q || exit $?
+    git -C "$repo_dir" diff --name-status origin/master HEAD
+    git -C "$repo_dir" push origin master -q || exit $?
   fi
 
   printf "\nlocal <- cache    remote\n"
@@ -222,7 +230,7 @@ function sync() {
   while IFS= read -r backup; do
     [ -d $backup ] && continue 
 
-    real="/`realpath --relative-to="$files_dir" "$backup"`"
+    real="/`realpath --relative-to="$repo_file_dir" "$backup"`"
 
     if [ -f $real ] ; then
         if [ $backup -nt $real ] ;then
@@ -250,46 +258,63 @@ function sync() {
         (sudo cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" || exit $?)
     fi
   done << EOF
-`find "$files_dir"`
+`find "$repo_file_dir"`
 EOF
 
   if [ $change -eq 0 ] ; then
     printf "No changes\n"
   fi
 
-  $local_dir/sync_hook
+  sh $repo_sync_hook
 }
 
 ## INIT 
 function init() {
-  if [ -d "$local_dir/.git" ] ; then
+  repo_url=$1
+  if [ -z $repo_url ] ; then
+    printf "Enter a valid (e.g. empty) git repository to keep your setup (ssh and private recomended):\n"
+    read repo_url
+  fi
+  repo_name="`echo ${repo_url##*/} | cut -d'.' -f1`"
+  repo_dir="$repos_dir/$repo_name"
+
+  if [ -d "$repo_dir/.git" ] ; then
     printf "Already initialized\nTry '$EXE_NAME --help' for more information.\n"
     return 1
   fi
 
-  if [ -d "$local_dir" ] ; then
+  if [ -d "$repo_dir" ] ; then
     printf "Dirty directory remove?[Y/n]:"
     read awns
     [ ! -z $awns ] && [ $awns != "y" ] && exit 0
-    rm -rf "$local_dir"
+    rm -rf "$repo_dir"
     printf "\n"
   fi
-  mkdir -p $config_dir  
-  mkdir -p $local_dir
-  repo=$1
-  if [ -z $repo ] ; then
-    printf "Enter a valid (e.g. empty) git repository to keep your setup (ssh and private recomended):\n"
-    read repo
+
+  # set up 
+  mkdir -p $repo_dir  
+  set_repo_dir ${repo_name}
+
+  (git -C "$repo_dir" init -b master &>/dev/null &&\
+    git -C "$repo_dir" remote add origin $repo_url &>/dev/null) || exit $?
+
+  git  -C "$repo_dir" pull origin master &>/dev/null
+
+  mkdir -p $repo_file_dir  
+  touch $repo_sync_hook
+
+  if [ -z "$(ls -A $repo_dir | grep -v ".git" )" ] ; then
+    printf "Enter a mount point for the files [\$HOME]:"
+    read mnt
+    [ -z $mnt ] && mnt="\$HOME"
+    echo "$mnt" > "$repo_dir/mnt"
   fi
 
-  git -C "$local_dir" init &&\
-  git -C "$local_dir" remote add origin $repo
-  ecode=$?
-  [ $ecode -ne 0 ] && exit $?
+  git -C "$repo_dir" add . &>/dev/null
+  git -C "$repo_dir" commit -m "`hostname`" &>/dev/null
+  git -C "$repo_dir" push -u origin master &>/dev/null
 
-  git pull origin master
-
-  printf "\nInitialized!\n"
+  printf "Initialized!\n"
 }
 
 function pkg() {
@@ -351,7 +376,7 @@ function ssh(){
 }
 
 function full_sync() {
-  require_init
+  set_repo_dir $1
   echo "------------"
   echo "| Packages |"
   echo "------------"
