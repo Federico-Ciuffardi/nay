@@ -241,7 +241,7 @@ function sync() {
   while IFS= read -r backup; do
     [ -d $backup ] && continue 
 
-    real="/`realpath --relative-to="$repo_file_dir" "$backup"`"
+    real="$mnt_point/`realpath --relative-to="$repo_file_dir" "$backup"`"
 
     if [ -f $real ] ; then
         if [ $backup -nt $real ] ;then
