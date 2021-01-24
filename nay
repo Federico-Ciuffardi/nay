@@ -55,7 +55,7 @@ repos_dir="$local_dir/repos"
 #######
 function set_repo_dir(){
   if [ -z $1 ] ; then 
-    echo "No repo provided use of the following or init a new one."
+    echo "No repo provided use one of the following or init a new one."
     ls "$repos_dir"
     exit 1
   fi
@@ -80,6 +80,8 @@ function add(){
   set_repo_dir $1
   shift
 
+  mnt_point=$(bash -c "echo `cat $repo_mnt`" | sed 's#/$##g')
+
   if [ -z $1 ] ; then
     echo "Nothing specified, nothing added."
     exit 1
@@ -87,18 +89,25 @@ function add(){
 
   while [ $# -gt 0 ]; do
     rp="`realpath $1`" 
+    rel_rp="`realpath $1 --relative-to="$mnt_point"`" 
+
 
     if [ ! -e "$rp" ] ; then
-      echo "No file on $rp" 
-      exit 1
+      echo "WARNING: No file on `realpath $rp`" 
+      shift
+      continue
+    elif [ "`echo $rel_rp | cut -d'/' -f1`" = ".." ] ; then
+      echo "WARNING: $rp outside $mnt_point"
+      shift
+      continue
     fi
 
-    mkdir -p "$repo_file_dir${rp%/*}" 
-    [ -e "$repo_file_dir$rp" ] || cp -ur --preserve=timestamps --no-preserve=mode,ownership "$rp" "$repo_file_dir${rp%/*}"
+    mkdir -p "$repo_file_dir/${rel_rp%/*}" 
+    [ -e "$repo_file_dir$rp" ] || cp -ur --preserve=timestamps --no-preserve=mode,ownership "$rp" "$repo_file_dir/${rel_rp%/*}"
 
     # TODO do not add subdirs of already included dirs
     if [ -d "$rp" ] ; then
-      grep "$rp" $repo_dirs &> /dev/null || echo "$rp" >> $repo_dirs
+      grep "$rel_rp" $repo_dirs &> /dev/null || echo "$rel_rp" >> $repo_dirs
     fi
 
     shift
@@ -154,6 +163,8 @@ function pull_force() {
 function sync() {
   set_repo_dir $1
 
+  mnt_point=$(bash -c "echo `cat $repo_mnt`" | sed 's#/$##g')
+
   if git -C "$repo_dir" rebase --show-current-patch &>/dev/null ; then
     mergeinfo=`git -c core.editor=true -C "$repo_dir" rebase --continue 2>&1`
     if [ $? -ne 0 ] ; then
@@ -169,12 +180,12 @@ function sync() {
   printf "\nlocal -> cache    remote\n"
   if [ -d $repo_dirs ] ; then
     cat $repo_dirs | while read dir ; do
-      add $dir/*
+      add "$mnt_point/$dir/*"
     done
   fi
 
   for FILE in $(git -C "$repo_file_dir" ls-tree -r --name-only origin/master) ; do
-    real=/$FILE
+    real=$mnt_point/$FILE
     backup=$repo_file_dir/$FILE
 
     if [ -f $real ] ; then
