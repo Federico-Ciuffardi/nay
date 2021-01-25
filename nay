@@ -53,34 +53,38 @@ repos_dir="$local_dir/repos"
 #######
 # Aux #
 #######
-function set_repo_dir(){
+function set_repo(){
   if [ -z $1 ] ; then 
     echo "No repo provided use one of the following or init a new one."
     ls "$repos_dir"
     exit 1
   fi
+
   repo_dir="$repos_dir/$1"
-  repo_file_dir="$repo_dir/files"
-  repo_dirs="$repo_dir/dirs"
-  repo_mnt="$repo_dir/mnt"
-  repo_sync_hook="$repo_dir/sync_hook"
-  repo_config="$repo_dir/config"
+
   if [ ! -d "$repo_dir" ] ; then
     printf "Not initialized, please initialize it with '$EXE_NAME init' first\n"
     exit 1
   fi
+
+  repo_file_dir="$repo_dir/files"
+  repo_dirs="$repo_dir/dirs"
+  repo_sync_hook="$repo_dir/sync_hook"
+  repo_config="$repo_dir/config"
+  repo_mnt="$repo_dir/mnt"
+
+  [ -f $repo_mnt ] && mnt_point=$(bash -c "echo `cat $repo_mnt`" | sed 's#/$##g')
+
 }
 
 ############
 # Commands #
 ############
 
-## ADD
+# ADD
 function add(){
-  set_repo_dir $1
+  set_repo $1
   shift
-
-  mnt_point=$(bash -c "echo `cat $repo_mnt`" | sed 's#/$##g')
 
   if [ -z $1 ] ; then
     echo "Nothing specified, nothing added."
@@ -91,13 +95,14 @@ function add(){
     rp="`realpath $1`" 
     rel_rp="`realpath $1 --relative-to="$mnt_point"`" 
 
-
     if [ ! -e "$rp" ] ; then
-      echo "WARNING: No file on `realpath $rp`" 
+      printf " \u001b[31mx\u001b[0m "
+      echo "No file on `realpath $rp`" 
       shift
       continue
     elif [ "`echo $rel_rp | cut -d'/' -f1`" = ".." ] ; then
-      echo "WARNING: $rp outside $mnt_point"
+      printf " \u001b[31mx\u001b[0m "
+      echo "$rp outside $mnt_point"
       shift
       continue
     fi
@@ -116,29 +121,29 @@ function add(){
 
 ## PULL 
 function pull_force() {
-  set_repo_dir $1
+  set_repo $1
 
-  git -C "$local_dir" fetch -q || exit $?
+  git -C "$repo_dir" fetch -q || exit $?
 
-  git -C "$local_dir" reset --hard &>/dev/null || exit $?
+  git -C "$repo_dir" reset --hard &>/dev/null || exit $?
 
   printf "\nlocal    cache <- remote\n"
-  if [ -z "`git -C "$local_dir" rev-list HEAD..origin/master`" ] ; then
+  if [ -z "`git -C "$repo_dir" rev-list HEAD..origin/master`" ] ; then
     printf "No changes\n"
   else
-    git -C "$local_dir" diff --name-status HEAD origin/master
-    git -C "$local_dir" pull origin master &>/dev/null || exit $?
+    git -C "$repo_dir" diff --name-status HEAD origin/master
+    git -C "$repo_dir" pull origin master &>/dev/null || exit $?
 
-    for FILE in $(git -C "$local_dir" ls-files) ; do
-      TIME=$(git -C "$local_dir" log --pretty=format:%cd -n 1 --date=iso -- "$local_dir/$FILE")
+    for FILE in $(git -C "$repo_dir" ls-files) ; do
+      TIME=$(git -C "$repo_dir" log --pretty=format:%cd -n 1 --date=iso -- "$repo_dir/$FILE")
       TIME=`echo $TIME | sed 's/-//g;s/ //;s/://;s/:/\./;s/ .*//'`
-      touch -m -t "$TIME" "$local_dir/$FILE"
+      touch -m -t "$TIME" "$repo_dir/$FILE"
     done
   fi
 
   printf "\nlocal <- cache    remote\n"
   find "$repo_file_dir" | while IFS= read -r backup; do
-    real="/`realpath --relative-to="$repo_file_dir" "$backup"`"
+    real="$mnt_point/`realpath --relative-to="$repo_file_dir" "$backup"`"
 
     [ -d $backup ] && continue 
 
@@ -156,14 +161,12 @@ function pull_force() {
     fi
   done
 
-  sh $repo_sync_hook
+  [ -f $repo_sync_hook ] && sh $repo_sync_hook
 }
 
 ## SYNC
 function sync() {
-  set_repo_dir $1
-
-  mnt_point=$(bash -c "echo `cat $repo_mnt`" | sed 's#/$##g')
+  set_repo $1
 
   if git -C "$repo_dir" rebase --show-current-patch &>/dev/null ; then
     mergeinfo=`git -c core.editor=true -C "$repo_dir" rebase --continue 2>&1`
@@ -276,7 +279,7 @@ EOF
     printf "No changes\n"
   fi
 
-  sh $repo_sync_hook
+  [ -f $repo_sync_hook ] && sh $repo_sync_hook
 }
 
 ## INIT 
@@ -304,7 +307,7 @@ function init() {
 
   # set up 
   mkdir -p $repo_dir  
-  set_repo_dir ${repo_name}
+  set_repo ${repo_name}
 
   (git -C "$repo_dir" init -b master &>/dev/null &&\
     git -C "$repo_dir" remote add origin $repo_url &>/dev/null) || exit $?
@@ -350,10 +353,7 @@ function pkg() {
   sudo reflector --verbose --latest 10 --sort rate --save /etc/pacman.d/mirrorlist
 
   echo "-> installing all packages"
-  # yay -S --needed --noredownload  --norebuild \
-  #        --batchinstall --sudoloop \
-  #        `cat "$local_dir/packages" | sed -e '/^[ \t]*#/d' | sed '/^$/d'`
-  for pkg in `cat "$local_dir/packages" | sed -e '/^[ \t]*#/d' | sed '/^$/d'` ; do
+  for pkg in `cat "$repo_dir/packages" | sed -e '/^[ \t]*#/d' | sed '/^$/d'` ; do
     if ! yay -Q "$pkg" &> /dev/null ; then
       if ! yay -Qg "$pkg" &> /dev/null ; then
         yay -S --noconfirm --needed --noredownload --answerclean --sudoloop "$pkg"
@@ -363,7 +363,7 @@ function pkg() {
 }
 
 function nonpkg() {
-  $local_dir/nonpkg
+  $repo_dir/nonpkg
 }
 
 function bootstrap() {
@@ -376,7 +376,7 @@ function bootstrap() {
   echo
   echo "non pkgs"
   nonpkg
-  $local_dir/bootstrap
+  $repo_dir/bootstrap
 }
 
 function ssh(){
@@ -387,7 +387,7 @@ function ssh(){
 }
 
 function full_sync() {
-  set_repo_dir $1
+  set_repo $1
   echo "------------"
   echo "| Packages |"
   echo "------------"
