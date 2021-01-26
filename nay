@@ -19,8 +19,8 @@ Commands:
    add               Add a directory/file to the setup setup
    sync              Syncs the config files
    pull_force        Pull the config from remote and REPLACES the local one
-   pkg               Intalls all the packages that can be installed with yay
-   nonpkg            Intalls all the packages that can not be instaled with yay
+   pkg               Installs all the packages that can be installed with yay
+   nonpkg            Installs all the packages that can not be instaled with yay
    bootstrap         Sets up the configs files and software
    ssh               Sets all the git origins to use ssh
    full_sync         Executes pkg, nonpkg and sync
@@ -55,6 +55,7 @@ repos_dir="$local_dir/repos"
 #######
 function set_repo(){
   if [ -z $1 ] ; then 
+    [ -z $repo_file_dir ] || return 0
     echo "No repo provided use one of the following or init a new one."
     ls "$repos_dir"
     exit 1
@@ -74,6 +75,7 @@ function set_repo(){
   repo_mnt="$repo_dir/mnt"
 
   [ -f $repo_mnt ] && mnt_point=$(bash -c "echo `cat $repo_mnt`" | sed 's#/$##g')
+  [ -z $mnt_point ] && mnt_point='/'
 
 }
 
@@ -107,8 +109,9 @@ function add(){
       continue
     fi
 
-    mkdir -p "$repo_file_dir/${rel_rp%/*}" 
-    [ -e "$repo_file_dir$rp" ] || cp -ur --preserve=timestamps --no-preserve=mode,ownership "$rp" "$repo_file_dir/${rel_rp%/*}"
+    rel_rp_aux="/$rel_rp"
+    mkdir -p "$repo_file_dir${rel_rp_aux%/*}" 
+    [ -e "$repo_file_dir$rp" ] || cp -ur --preserve=timestamps --no-preserve=mode,ownership "$rp" "$repo_file_dir${rel_rp_aux%/*}"
 
     # TODO do not add subdirs of already included dirs
     if [ -d "$rp" ] ; then
@@ -166,6 +169,17 @@ function pull_force() {
 
 ## SYNC
 function sync() {
+  if [ ! -z $1 ] && [ $1 = "--all" ] ; then
+    for repo in `ls "$repos_dir"` ; do
+      echo "###"
+      echo "# $repo"
+      echo "###"
+      sync $repo
+      printf "\n"
+    done
+    exit 0
+  fi
+
   set_repo $1
 
   if git -C "$repo_dir" rebase --show-current-patch &>/dev/null ; then
@@ -315,9 +329,8 @@ function init() {
   git  -C "$repo_dir" pull origin master &>/dev/null
 
   mkdir -p $repo_file_dir  
-  touch $repo_sync_hook
 
-  if [ -z "$(ls -A $repo_dir | grep -v ".git" )" ] ; then
+  if [ ! -f $repo_mnt ] ; then
     printf "Enter a mount point for the files [\$HOME]:"
     read mnt
     [ -z $mnt ] && mnt="\$HOME"
@@ -332,6 +345,9 @@ function init() {
 }
 
 function pkg() {
+  set_repo $1
+
+  [ -f $repo_dir/packages ] || return 0 
 
   yay -v &> /dev/null
   if [ $? -ne 0 ] ; then
@@ -363,10 +379,12 @@ function pkg() {
 }
 
 function nonpkg() {
-  $repo_dir/nonpkg
+  set_repo $1
+  [ -f $repo_dir/nonpkg ] && $repo_dir/nonpkg
 }
 
 function bootstrap() {
+  set_repo $1
   init
   echo
   echo "dotfiles"
@@ -387,6 +405,17 @@ function ssh(){
 }
 
 function full_sync() {
+  if [ $1 = "--all" ] ; then
+    for repo in `ls "$repos_dir"` ; do
+      echo "###"
+      echo "# $repo"
+      echo "###"
+      full_sync $repo
+      printf "\n"
+    done
+    exit 0
+  fi
+
   set_repo $1
   echo "------------"
   echo "| Packages |"
