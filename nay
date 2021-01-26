@@ -146,7 +146,7 @@ function pull_force() {
 
   printf "\nlocal <- cache    remote\n"
   find "$repo_file_dir" | while IFS= read -r backup; do
-    real="$mnt_point/`realpath --relative-to="$repo_file_dir" "$backup"`"
+    real="`echo $mnt_point | sed 's#/$##g'`/`realpath --relative-to="$repo_file_dir" "$backup"`"
 
     [ -d $backup ] && continue 
 
@@ -258,7 +258,7 @@ function sync() {
   while IFS= read -r backup; do
     [ -d $backup ] && continue 
 
-    real="$mnt_point/`realpath --relative-to="$repo_file_dir" "$backup"`"
+    real="`echo $mnt_point | sed 's#/$##g'`/`realpath --relative-to="$repo_file_dir" "$backup"`"
 
     if [ -f $real ] ; then
         if [ $backup -nt $real ] ;then
@@ -270,7 +270,7 @@ function sync() {
           else
             export change=1
             printf "T %s\n" "$real"
-            touch -r "$backup" "$real" || (sudo touch -r "$backup" "$real" || exit $?)
+            touch -r "$backup" "$real" &>/dev/null || (sudo touch -r "$backup" "$real" || exit $?)
           fi
         # elif [ $backup -ot $real ] ; then
         #   printf "T %s\n" "$real"
