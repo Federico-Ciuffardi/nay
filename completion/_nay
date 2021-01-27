@@ -1,5 +1,4 @@
 #compdef nay
-
 _nay() {
   local context curcontext="$curcontext" state line
   typeset -A opt_args
@@ -43,11 +42,7 @@ _nay_cmds() {
     'add:Add a directory/file to the setup setup'
     'sync:Syncs the config files'
     'pull_force:Pull the config from remote and REPLACES the local one'
-    'pkg:Installs all the packages that can be installed with yay'
-    'nonpkg:Installs all the packages that can not be instaled with yay'
-    'bootstrap:Sets up the configs files and software'
     'ssh:Sets all the git origins to use ssh'
-    'full_sync:Executes pkg, nonpkg and sync'
   )
   _describe -t commands 'nay! command' commands "$@"
 }
@@ -56,6 +51,7 @@ _nay_cmds() {
 _nay_apps() {
   local commands; commands=(
     `ls $HOME/.local/share/nay/repos`
+    '--all'
   )
   _describe -t commands 'nay! command' commands "$@"
 }

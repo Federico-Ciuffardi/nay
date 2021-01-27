@@ -1,5 +1,7 @@
 #!/bin/bash
 
+source "/usr/lib/naylib"
+
 EXE_NAME="nay"
 
 NAME="Not Another Yogurt"
@@ -19,11 +21,7 @@ Commands:
    add               Add a directory/file to the setup setup
    sync              Syncs the config files
    pull_force        Pull the config from remote and REPLACES the local one
-   pkg               Installs all the packages that can be installed with yay
-   nonpkg            Installs all the packages that can not be instaled with yay
-   bootstrap         Sets up the configs files and software
    ssh               Sets all the git origins to use ssh
-   full_sync         Executes pkg, nonpkg and sync
 "
 #########
 # MISC  #
@@ -81,8 +79,10 @@ function set_repo(){
 }
 
 function sync_hooks(){
+  draw_heading 1 "Sync Hooks"
   if [ -d $repo_sync_hooks ] ; then
     for f in $repo_sync_hooks/*; do
+      draw_heading 2 "${f##*/}"
       bash "$f"
     done
   fi
@@ -180,14 +180,14 @@ function pull_force() {
 function sync() {
   if [ ! -z $1 ] && [ $1 = "--all" ] ; then
     for repo in `ls "$repos_dir"` ; do
-      echo "###"
-      echo "# $repo"
-      echo "###"
+      echo "-> $repo"
       sync $repo
       printf "\n"
     done
     exit 0
   fi
+
+  draw_heading 1 "Sync"
 
   set_repo $1
 
@@ -203,7 +203,7 @@ function sync() {
   
   git -C "$repo_dir" fetch -q || exit $?
 
-  printf "\nlocal -> cache    remote\n"
+  draw_heading 2 "local -> cache    remote"
   if [ -d $repo_dirs ] ; then
     cat $repo_dirs | while read dir ; do
       add "$mnt_point/$dir/*"
@@ -234,7 +234,7 @@ function sync() {
     git -C "$repo_dir" diff --name-status  HEAD~1 HEAD
   fi
 
-  printf "\nlocal    cache <- remote\n"
+  draw_heading 2 "local    cache <- remote"
   if [ -z "`git -C "$repo_dir" rev-list HEAD..origin/master`" ] ; then
     printf "No changes\n"
   else
@@ -253,7 +253,7 @@ function sync() {
     done
   fi
 
-  printf "\nlocal    cache -> remote\n"
+  draw_heading 2 "local    cache -> remote"
   if [ -z "`git -C "$repo_dir" rev-list origin/master..HEAD`" ] ; then
     printf "No changes\n"
   else
@@ -261,7 +261,7 @@ function sync() {
     git -C "$repo_dir" push origin master -q || exit $?
   fi
 
-  printf "\nlocal <- cache    remote\n"
+  draw_heading 2 "local <- cache    remote"
   export change=0
 
   while IFS= read -r backup; do
@@ -354,59 +354,6 @@ function init() {
   printf "Initialized!\n"
 }
 
-function pkg() {
-  set_repo $1
-
-  [ -f $repo_dir/packages ] || return 0 
-
-  yay -v &> /dev/null
-  if [ $? -ne 0 ] ; then
-    echo ":: yay not installed, installing..."
-    sudo pacman -Syu
-    sudo pacman -S --noconfirm --needed git base-devel 
-    git config --global pull.rebase true
-    cd /tmp
-    git clone https://aur.archlinux.org/yay.git
-    cd yay
-    makepkg -si
-    echo
-    yay -S reflector
-  fi
-
-  yay -Syu
-
-  printf "\n-> updating mirror list\n"
-  sudo reflector --verbose --latest 10 --sort rate --save /etc/pacman.d/mirrorlist
-
-  echo "-> installing all packages"
-  for pkg in `cat "$repo_dir/packages" | sed -e '/^[ \t]*#/d' | sed '/^$/d'` ; do
-    if ! yay -Q "$pkg" &> /dev/null ; then
-      if ! yay -Qg "$pkg" &> /dev/null ; then
-        yay -S --noconfirm --needed --noredownload --answerclean --sudoloop "$pkg"
-      fi
-    fi
-  done
-}
-
-function nonpkg() {
-  set_repo $1
-  [ -f $repo_dir/nonpkg ] && $repo_dir/nonpkg
-}
-
-function bootstrap() {
-  set_repo $1
-  init
-  echo
-  echo "dotfiles"
-  pull_force 
-  echo "pkgs"
-  pkg
-  echo
-  echo "non pkgs"
-  nonpkg
-  $repo_dir/bootstrap
-}
-
 function ssh(){
   for dir in "$HOME/.build/"* ; do
     cd "$dir"
@@ -414,32 +361,6 @@ function ssh(){
   done
 }
 
-function full_sync() {
-  if [ $1 = "--all" ] ; then
-    for repo in `ls "$repos_dir"` ; do
-      echo "###"
-      echo "# $repo"
-      echo "###"
-      full_sync $repo
-      printf "\n"
-    done
-    exit 0
-  fi
-
-  set_repo $1
-  echo "------------"
-  echo "| Packages |"
-  echo "------------"
-  pkg
-  echo "----------------"
-  echo "| Non Packages |"
-  echo "----------------"
-  nonpkg
-  echo "---------"
-  echo "| Files |"
-  echo "---------"
-  sync
-}
 ########
 # Main #
 ########

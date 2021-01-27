@@ -1,0 +1,49 @@
+#! /bin/bash
+
+# usage: 'draw_spinner [comment] [command] [command args]
+function draw_spinner() {
+	local comment="${1}"
+	shift
+
+	(${@} &>/dev/null) &
+
+	local pid="${!}"
+	local i='1'
+	local spinner_seq='/-\|'
+
+	while [[ -d "/proc/${pid}" ]]; do
+		sleep '0.10'
+		printf "\r${spinner_seq:i++%${#spinner_seq}:1} $comment"
+	done
+
+	wait "${pid}"
+
+	local ecode="${?}"
+
+	if [ "${ecode}" -eq "0" ]; then
+		printf "\r\u001b[32m✓\u001b[0m "
+	else
+		printf "\r\u001b[31mx\u001b[0m "
+	fi
+	printf "${comment}\n"
+	return "${ecode}"
+}
+
+# usage: 'draw_heading [heading text] [heading level]
+function draw_heading() {
+	local level="${1}"
+
+	local text="${2}"
+
+  local inidcator_color='\u001b[34m'
+  local indicator='#'
+  local text_color='\u001b[37;1m'
+
+  local reset_color='\u001b[0m'
+
+  printf "${inidcator_color}"
+  for ((i=1;i<="${level}";i++)); do
+      printf "${indicator}"
+  done 
+  printf " ${text_color}${text}${reset_color}\n"
+}
