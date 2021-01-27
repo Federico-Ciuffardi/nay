@@ -71,12 +71,21 @@ function set_repo(){
   repo_file_dir="$repo_dir/files"
   repo_dirs="$repo_dir/dirs"
   repo_sync_hook="$repo_dir/sync_hook"
+  repo_sync_hooks="$repo_dir/sync_hooks"
   repo_config="$repo_dir/config"
   repo_mnt="$repo_dir/mnt"
 
   [ -f $repo_mnt ] && mnt_point=$(bash -c "echo `cat $repo_mnt`" | sed 's#/$##g')
   [ -z $mnt_point ] && mnt_point='/'
 
+}
+
+function sync_hooks(){
+  if [ -d $repo_sync_hooks ] ; then
+    for f in $repo_sync_hooks/*; do
+      bash "$f"
+    done
+  fi
 }
 
 ############
@@ -164,7 +173,7 @@ function pull_force() {
     fi
   done
 
-  [ -f $repo_sync_hook ] && sh $repo_sync_hook
+  sync_hooks
 }
 
 ## SYNC
@@ -293,7 +302,7 @@ EOF
     printf "No changes\n"
   fi
 
-  [ -f $repo_sync_hook ] && sh $repo_sync_hook
+  sync_hooks
 }
 
 ## INIT 
@@ -329,6 +338,7 @@ function init() {
   git  -C "$repo_dir" pull origin master &>/dev/null
 
   mkdir -p $repo_file_dir  
+  mkdir -p $repo_sync_hooks
 
   if [ ! -f $repo_mnt ] ; then
     printf "Enter a mount point for the files [\$HOME]:"
