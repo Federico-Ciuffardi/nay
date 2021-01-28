@@ -79,12 +79,16 @@ function set_repo(){
 }
 
 function sync_hooks(){
-  draw_heading 1 "Sync Hooks"
-  if [ -d $repo_sync_hooks ] ; then
+  if [ -d $repo_sync_hooks ] && [ ! -z "$(ls -A $repo_sync_hooks)" ]  ; then
+    draw_heading "Sync Hooks"
+    increase_heading_level
     for f in $repo_sync_hooks/*; do
-      draw_heading 2 "${f##*/}"
-      bash "$f"
+      draw_heading "${f##*/}"
+      increase_heading_level
+      source "$f"
+      decrease_heading_level
     done
+    decrease_heading_level
   fi
 }
 
@@ -135,11 +139,14 @@ function add(){
 function pull_force() {
   set_repo $1
 
+  draw_heading "Pull Force"
+  increase_heading_level
+
   git -C "$repo_dir" fetch -q || exit $?
 
   git -C "$repo_dir" reset --hard &>/dev/null || exit $?
 
-  printf "\nlocal    cache <- remote\n"
+  draw_heading  "local    cache <- remote"
   if [ -z "`git -C "$repo_dir" rev-list HEAD..origin/master`" ] ; then
     printf "No changes\n"
   else
@@ -153,7 +160,7 @@ function pull_force() {
     done
   fi
 
-  printf "\nlocal <- cache    remote\n"
+  draw_heading "local <- cache    remote"
   find "$repo_file_dir" | while IFS= read -r backup; do
     real="`echo $mnt_point | sed 's#/$##g'`/`realpath --relative-to="$repo_file_dir" "$backup"`"
 
@@ -173,6 +180,7 @@ function pull_force() {
     fi
   done
 
+  decrease_heading_level
   sync_hooks
 }
 
@@ -180,16 +188,18 @@ function pull_force() {
 function sync() {
   if [ ! -z $1 ] && [ $1 = "--all" ] ; then
     for repo in `ls "$repos_dir"` ; do
-      echo "-> $repo"
+      reset_heading_level
+      printf "\u001b[32;1m$repo\u001b[0m\n"
       sync $repo
       printf "\n"
     done
     exit 0
   fi
 
-  draw_heading 1 "Sync"
-
   set_repo $1
+
+  draw_heading "Sync"
+  increase_heading_level
 
   if git -C "$repo_dir" rebase --show-current-patch &>/dev/null ; then
     mergeinfo=`git -c core.editor=true -C "$repo_dir" rebase --continue 2>&1`
@@ -203,7 +213,7 @@ function sync() {
   
   git -C "$repo_dir" fetch -q || exit $?
 
-  draw_heading 2 "local -> cache    remote"
+  draw_heading "local -> cache    remote"
   if [ -d $repo_dirs ] ; then
     cat $repo_dirs | while read dir ; do
       add "$mnt_point/$dir/*"
@@ -234,7 +244,7 @@ function sync() {
     git -C "$repo_dir" diff --name-status  HEAD~1 HEAD
   fi
 
-  draw_heading 2 "local    cache <- remote"
+  draw_heading "local    cache <- remote"
   if [ -z "`git -C "$repo_dir" rev-list HEAD..origin/master`" ] ; then
     printf "No changes\n"
   else
@@ -253,7 +263,7 @@ function sync() {
     done
   fi
 
-  draw_heading 2 "local    cache -> remote"
+  draw_heading "local    cache -> remote"
   if [ -z "`git -C "$repo_dir" rev-list origin/master..HEAD`" ] ; then
     printf "No changes\n"
   else
@@ -261,7 +271,7 @@ function sync() {
     git -C "$repo_dir" push origin master -q || exit $?
   fi
 
-  draw_heading 2 "local <- cache    remote"
+  draw_heading "local <- cache    remote"
   export change=0
 
   while IFS= read -r backup; do
@@ -302,6 +312,7 @@ EOF
     printf "No changes\n"
   fi
 
+  decrease_heading_level
   sync_hooks
 }
 
