@@ -16,13 +16,13 @@ _nay() {
       case $line[1] in
         (add)
           _arguments \
-            '1:: :_nay_apps' \
+            '1:: :_nay_repo' \
             '2:: :_files' \
           && ret=0
         ;;
         (sync|pull_force|pkg|nonpkg|bootstrap|full_sync)
           _arguments \
-            '1:: :_nay_apps' \
+            '1:: :_nay_repos' \
           && ret=0
         ;;
         *)
@@ -47,11 +47,19 @@ _nay_cmds() {
   _describe -t commands 'nay! command' commands "$@"
 }
 
-(( $+functions[_nay_apps] )) ||
-_nay_apps() {
+(( $+functions[_nay_repos] )) ||
+_nay_repos() {
   local commands; commands=(
     `ls $HOME/.local/share/nay/repos`
     '--all'
+  )
+  _describe -t commands 'nay! command' commands "$@"
+}
+
+(( $+functions[_nay_repo] )) ||
+_nay_repo() {
+  local commands; commands=(
+    `ls $HOME/.local/share/nay/repos`
   )
   _describe -t commands 'nay! command' commands "$@"
 }

@@ -137,6 +137,16 @@ function add(){
 
 ## PULL 
 function pull_force() {
+  if [ ! -z $1 ] && [ $1 = "--all" ] ; then
+    for repo in `ls "$repos_dir"` ; do
+      reset_heading_level
+      printf "\u001b[32;1m$repo\u001b[0m\n"
+      pull_force $repo
+      printf "\n"
+    done
+    exit 0
+  fi
+
   set_repo $1
 
   draw_heading "Pull Force"
@@ -391,10 +401,11 @@ while [ $# -gt 0 ]; do
       exit 0
       ;;
     -v|--version)
-      echo "$VERSION"
+      echo "$NAME $VERSION"
       exit 0
       ;;
     init|ssh|add|sync|pkg|nonpkg|script|bootstrap|pull_force|full_sync)
+      reset_heading_level
       $@  
       exit $?
       ;;

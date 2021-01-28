@@ -71,7 +71,6 @@ function draw_heading() {
     printf '\n'
   fi
 
-  # echo "${LAST_NAY_HEADING_LEVEL}" '>' "${NAY_HEADING_LEVEL}"
   export LAST_NAY_HEADING_LEVEL="${NAY_HEADING_LEVEL}"
 
   printf "${inidcator_color}"
