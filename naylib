@@ -43,17 +43,17 @@ function draw_spinner() {
 [ -z ${NAY_HEADING_LEVEL} ] && NAY_HEADING_LEVEL=1
 
 function increase_heading_level(){
-  NAY_HEADING_LEVEL=$((NAY_HEADING_LEVEL+1))
+  export NAY_HEADING_LEVEL=$((NAY_HEADING_LEVEL+1))
 }
 
 
 function decrease_heading_level(){
-  NAY_HEADING_LEVEL=$((NAY_HEADING_LEVEL-1))
+  export NAY_HEADING_LEVEL=$((NAY_HEADING_LEVEL-1))
 }
 
 function reset_heading_level(){
-  LAST_NAY_HEADING_LEVEL=1
-  NAY_HEADING_LEVEL=1
+  export LAST_NAY_HEADING_LEVEL=1
+  export NAY_HEADING_LEVEL=1
 }
 
 # usage: 'draw_heading [heading text] [heading level]
@@ -72,7 +72,7 @@ function draw_heading() {
   fi
 
   # echo "${LAST_NAY_HEADING_LEVEL}" '>' "${NAY_HEADING_LEVEL}"
-  LAST_NAY_HEADING_LEVEL="${NAY_HEADING_LEVEL}"
+  export LAST_NAY_HEADING_LEVEL="${NAY_HEADING_LEVEL}"
 
   printf "${inidcator_color}"
   for ((i=1;i<="${NAY_HEADING_LEVEL}";i++)); do

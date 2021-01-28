@@ -73,8 +73,8 @@ function set_repo(){
   repo_config="$repo_dir/config"
   repo_mnt="$repo_dir/mnt"
 
-  [ -f $repo_mnt ] && mnt_point=$(bash -c "echo `cat $repo_mnt`" | sed 's#/$##g')
-  [ -z $mnt_point ] && mnt_point='/'
+  [ ! -f $repo_mnt ] || mnt_point=$(bash -c "echo `cat $repo_mnt`" | sed 's#/$##g')
+  [ ! -z $mnt_point ] || mnt_point='/'
 
 }
 
@@ -85,7 +85,7 @@ function sync_hooks(){
     for f in $repo_sync_hooks/*; do
       draw_heading "${f##*/}"
       increase_heading_level
-      source "$f"
+      $f
       decrease_heading_level
     done
     decrease_heading_level
@@ -164,7 +164,7 @@ function pull_force() {
   find "$repo_file_dir" | while IFS= read -r backup; do
     real="`echo $mnt_point | sed 's#/$##g'`/`realpath --relative-to="$repo_file_dir" "$backup"`"
 
-    [ -d $backup ] && continue 
+    [ ! -d $backup ] || continue 
 
     if [ -f $real ] ; then
       if ! cmp $real $backup &> /dev/null ; then
@@ -236,7 +236,7 @@ function sync() {
   done
 
   git -C "$repo_dir" add . &>/dev/null
-  git -C "$repo_dir" commit -m "`hostname`" &>/dev/null
+  git -C "$repo_dir" commit -m "`hostname`" &>/dev/null || true
 
   if [ -z "`git -C "$repo_dir" rev-list origin/master..HEAD`" ] ; then
     printf "No changes\n"
@@ -275,7 +275,7 @@ function sync() {
   export change=0
 
   while IFS= read -r backup; do
-    [ -d $backup ] && continue 
+    [ ! -d $backup ] || continue 
 
     real="`echo $mnt_point | sed 's#/$##g'`/`realpath --relative-to="$repo_file_dir" "$backup"`"
 
@@ -334,7 +334,7 @@ function init() {
   if [ -d "$repo_dir" ] ; then
     printf "Dirty directory remove?[Y/n]:"
     read awns
-    [ ! -z $awns ] && [ $awns != "y" ] && exit 0
+    [ -z $awns ] || [ $awns = "y" ] || exit 0
     rm -rf "$repo_dir"
     printf "\n"
   fi
@@ -343,8 +343,8 @@ function init() {
   mkdir -p $repo_dir  
   set_repo ${repo_name}
 
-  (git -C "$repo_dir" init -b master &>/dev/null &&\
-    git -C "$repo_dir" remote add origin $repo_url &>/dev/null) || exit $?
+  git -C "$repo_dir" init -b master &>/dev/null
+  git -C "$repo_dir" remote add origin $repo_url &>/dev/null
 
   git  -C "$repo_dir" pull origin master &>/dev/null
 
@@ -354,7 +354,7 @@ function init() {
   if [ ! -f $repo_mnt ] ; then
     printf "Enter a mount point for the files [\$HOME]:"
     read mnt
-    [ -z $mnt ] && mnt="\$HOME"
+    [ ! -z $mnt ] || mnt="\$HOME"
     echo "$mnt" > "$repo_dir/mnt"
   fi
 
@@ -375,6 +375,15 @@ function ssh(){
 ########
 # Main #
 ########
+if [[ ${DEBUG-} =~ ^1|yes|true$ ]]; then
+    set -o xtrace       # Trace the execution of the script (debug)
+fi
+
+set -o errexit      # Exit on most errors (see the manual)
+set -o nounset      # Disallow expansion of unset variables
+set -o pipefail     # Use last non-zero exit code in a pipeline
+set -o errtrace         # Ensure the error trap handler is inherited
+
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)
