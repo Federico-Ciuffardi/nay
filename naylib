@@ -1,20 +1,24 @@
 #! /bin/bash
 
-function sudo_draw_spinner() {
-	local comment="${1}"
-  shift
+# function sudo_draw_spinner() {
+# 	local comment="${1}"
+#   shift
 
-  sudo -v
-  draw_spinner "${comment}" "sudo -n -- ${@}"
-}
+#   sudo -v
+#   draw_spinner "${comment}" "sudo -n -- ${@}"
+# }
 
 # usage: 'draw_spinner [comment] [command] [command args]
 function draw_spinner() {
 	local comment="${1}"
 	shift
 
+  if [[ `echo ${@}|cut -d' ' -f1` = "sudo" ]]; then
+    sudo -v || exit 1
+  fi
+
   output_file=$(mktemp)
-	(${@} &>"${output_file}") &
+  (${@} &>"${output_file}") &
 
 	local pid="${!}"
 	local i='1'

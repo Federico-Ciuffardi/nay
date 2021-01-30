@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 source "/usr/lib/naylib"
 
@@ -245,13 +245,13 @@ function sync() {
     fi
   done
 
-  git -C "$repo_dir" add . &>/dev/null
-  git -C "$repo_dir" commit -m "`hostname`" &>/dev/null || true
-
-  if [ -z "`git -C "$repo_dir" rev-list origin/master..HEAD`" ] ; then
-    printf "No changes\n"
-  else
+  if [ ! -z "$(git -C "$repo_file_dir" diff --name-status)" ]; then
+    git -C "$repo_dir" add . &>/dev/null
+    output_file=$(mktemp)
+    git -C "$repo_dir" commit -m "`hostname`" &>"${output_file}" || (cat "${output_file}" && exit 1)
     git -C "$repo_dir" diff --name-status  HEAD~1 HEAD
+  else
+    printf "No changes\n"
   fi
 
   draw_heading "local    cache <- remote"
