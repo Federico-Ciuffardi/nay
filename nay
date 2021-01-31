@@ -231,14 +231,14 @@ function sync() {
   fi
 
   for FILE in $(git -C "$repo_file_dir" ls-tree -r --name-only origin/master) ; do
-    real=$mnt_point/$FILE
+    real="`echo $mnt_point | sed 's#/$##g'`/$FILE"
     backup=$repo_file_dir/$FILE
 
     if [ -f $real ] ; then
       mkdir -p "${backup%/*}"
       cp -u --preserve=timestamps --no-preserve=mode,ownership "$real" "$backup"
     elif [ ! -d $real ] ; then
-      rm "$backup" &>/dev/null
+      [ ! -f $backup ] || rm "$backup" &>/dev/null
     else
       echo "Expected file or nothing on'$real' but found a directory \nPlease rename the directory and run '$EXE_NAME sync' again\n"
       exit 1
