@@ -224,9 +224,9 @@ function sync() {
   git -C "$repo_dir" fetch -q || exit $?
 
   draw_heading "local -> cache    remote"
-  if [ -d $repo_dirs ] ; then
+  if [ -f $repo_dirs ] ; then
     cat $repo_dirs | while read dir ; do
-      add "$mnt_point/$dir/*"
+      add "`echo $1 | sed 's#/$##g'`" $mnt_point/$dir/*
     done
   fi
 
