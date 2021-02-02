@@ -100,22 +100,22 @@ function sync_hooks(){
 function add(){
   set_repo $1
   shift
-
-  if [ -z $1 ] ; then
+  
+  if [ $# -eq 0 ] ; then
     echo "Nothing specified, nothing added."
     exit 1
   fi
 
   while [ $# -gt 0 ]; do
-    rp="`realpath $1`" 
-    rel_rp="`realpath $1 --relative-to="$mnt_point"`" 
+    rp="$(realpath $1)" 
+    rel_rp="$(realpath $1 --relative-to="$mnt_point")" 
 
     if [ ! -e "$rp" ] ; then
       printf " \u001b[31mx\u001b[0m "
-      echo "No file on `realpath $rp`" 
+      echo "No file on $rp" 
       shift
       continue
-    elif [ "`echo $rel_rp | cut -d'/' -f1`" = ".." ] ; then
+    elif [ "$(echo $rel_rp | cut -d'/' -f1)" = ".." ] ; then
       printf " \u001b[31mx\u001b[0m "
       echo "$rp outside $mnt_point"
       shift
@@ -123,12 +123,12 @@ function add(){
     fi
 
     rel_rp_aux="/$rel_rp"
-    mkdir -p "$repo_file_dir${rel_rp_aux%/*}" 
-    [ -e "$repo_file_dir$rp" ] || cp -ur --preserve=timestamps --no-preserve=mode,ownership "$rp" "$repo_file_dir${rel_rp_aux%/*}"
+    mkdir -p "$repo_file_dir${rel_rp_aux%/*}" # remove the last file/dir from the rel_rp_aux path ex /home/fede -> /home
+    # [ -e "$repo_file_dir$rel_rp_aux" ] ||
+    cp -ur --preserve=timestamps --no-preserve=mode,ownership "$rp" "$repo_file_dir${rel_rp_aux%/*}"
 
-    # TODO do not add subdirs of already included dirs
     if [ -d "$rp" ] ; then
-      grep "$rel_rp" $repo_dirs &> /dev/null || echo "$rel_rp" >> $repo_dirs
+      grep "$rel_rp" $repo_dirs &>/dev/null || echo "$rel_rp" >> $repo_dirs
     fi
 
     shift
@@ -225,7 +225,7 @@ function sync() {
   draw_heading "local -> cache    remote"
   if [ -f $repo_dirs ] ; then
     cat $repo_dirs | while read dir ; do
-      add "`echo $1 | sed 's#/$##g'`" $mnt_point/$dir/*
+      add "`echo $1 | sed 's#/$##g'`" $mnt_point/$dir
     done
   fi
 
