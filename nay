@@ -236,11 +236,11 @@ function sync() {
     if [ -f $real ] ; then
       mkdir -p "${backup%/*}"
       cp -u --preserve=timestamps --no-preserve=mode,ownership "$real" "$backup"
-    elif [ ! -d $real ] ; then
-      [ ! -f $backup ] || rm "$backup" &>/dev/null
-    else
-      echo "Expected file or nothing on'$real' but found a directory \nPlease rename the directory and run '$EXE_NAME sync' again\n"
-      exit 1
+    # elif [ ! -d $real ] ; then
+      # [ ! -f $backup ] || rm "$backup" &>/dev/null
+    # else
+    #   echo "Expected file or nothing on'$real' but found a directory \nPlease rename the directory and run '$EXE_NAME sync' again\n"
+    #   exit 1
     fi
   done
 
