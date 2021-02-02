@@ -212,12 +212,11 @@ function sync() {
   increase_heading_level
 
   if git -C "$repo_dir" rebase --show-current-patch &>/dev/null ; then
-    mergeinfo=`git -c core.editor=true -C "$repo_dir" rebase --continue 2>&1`
-    if [ $? -ne 0 ] ; then
+    if mergeinfo=`git -c core.editor=true -C "$repo_dir" rebase --continue 2>&1` ; then
+      echo "Conflicts resolved, proceeding with the synchronization"
+    else
       echo "$mergeinfo"
       exit $?
-    else
-      echo "Conflicts resolved, proceeding with the synchronization"
     fi
   fi
   
@@ -259,7 +258,7 @@ function sync() {
     printf "No changes\n"
   else
     git -C "$repo_dir" diff --name-status HEAD origin/master
-    git -C "$repo_dir" rebase origin/master &>/dev/null
+    git -C "$repo_dir" rebase origin/master &>/dev/null || true
     if git -C "$repo_dir" rebase --show-current-patch &>/dev/null ; then
       echo
       git -C "$repo_dir" rebase --continue
@@ -392,7 +391,7 @@ fi
 set -o errexit      # Exit on most errors (see the manual)
 set -o nounset      # Disallow expansion of unset variables
 set -o pipefail     # Use last non-zero exit code in a pipeline
-set -o errtrace         # Ensure the error trap handler is inherited
+set -o errtrace     # Ensure the error trap handler is inherited
 
 while [ $# -gt 0 ]; do
   case "$1" in
