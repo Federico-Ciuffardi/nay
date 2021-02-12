@@ -184,8 +184,8 @@ function pull_force() {
       fi
     elif [ ! -d $real ] ; then
       printf "A %s\n" "$real"
-      mkdir -p "${real%/*}"
-      cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" ||\
+      mkdir -p "${real%/*}" &> /dev/null || sudo mkdir -p "${real%/*}"
+      cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" &> /dev/null ||\
         (sudo cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" || exit $?)
     fi
   done
@@ -309,7 +309,7 @@ function sync() {
     elif [ ! -d $real ] ; then
       export change=1
       printf "A %s\n" "$real"
-      mkdir -p "${real%/*}"
+      mkdir -p "${real%/*}" &> /dev/null || sudo mkdir -p "${real%/*}"
       cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" ||\
         (sudo cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" || exit $?)
     fi
