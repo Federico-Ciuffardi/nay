@@ -160,7 +160,7 @@ function pull_force() {
   if [ -z "`git -C "$repo_dir" rev-list HEAD..origin/master`" ] ; then
     printf "No changes\n"
   else
-    git -C "$repo_dir" diff --name-status HEAD origin/master
+    git -C "$repo_dir" --no-pager diff --name-status HEAD origin/master
     git -C "$repo_dir" pull origin master &>/dev/null || exit $?
 
     for FILE in $(git -C "$repo_dir" ls-files) ; do
@@ -248,7 +248,7 @@ function sync() {
     git -C "$repo_dir" add . &>/dev/null
     output_file=$(mktemp)
     git -C "$repo_dir" commit -m "`hostname`" &>"${output_file}" || (cat "${output_file}" && exit 1)
-    git -C "$repo_dir" diff --name-status  HEAD~1 HEAD
+    git -C "$repo_dir" --no-pager diff --name-status  HEAD~1 HEAD
   else
     printf "No changes\n"
   fi
@@ -257,7 +257,7 @@ function sync() {
   if [ -z "`git -C "$repo_dir" rev-list HEAD..origin/master`" ] ; then
     printf "No changes\n"
   else
-    git -C "$repo_dir" diff --name-status HEAD origin/master
+    git -C "$repo_dir" --no-pager diff --name-status HEAD origin/master
     git -C "$repo_dir" rebase origin/master &>/dev/null || true
     if git -C "$repo_dir" rebase --show-current-patch &>/dev/null ; then
       echo
@@ -276,7 +276,7 @@ function sync() {
   if [ -z "`git -C "$repo_dir" rev-list origin/master..HEAD`" ] ; then
     printf "No changes\n"
   else
-    git -C "$repo_dir" diff --name-status origin/master HEAD
+    git -C "$repo_dir" --no-pager diff --name-status origin/master HEAD
     git -C "$repo_dir" push origin master -q || exit $?
   fi
 
