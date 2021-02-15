@@ -67,6 +67,7 @@ function set_repo(){
   fi
 
   repo_file_dir="$repo_dir/files"
+  repo_file_metadata="$repo_dir/metadata"
   repo_dirs="$repo_dir/dirs"
   repo_sync_hook="$repo_dir/sync_hook"
   repo_sync_hooks="$repo_dir/sync_hooks"
@@ -190,6 +191,7 @@ function pull_force() {
     fi
   done
 
+  # Hooks
   decrease_heading_level
   sync_hooks
 }
@@ -229,6 +231,8 @@ function sync() {
     done
   fi
 
+  [ ! -f $repo_file_metadata ] || rm $repo_file_metadata
+
   for FILE in $(git -C "$repo_file_dir" ls-tree -r --name-only origin/master) ; do
     real="`echo $mnt_point | sed 's#/$##g'`/$FILE"
     backup=$repo_file_dir/$FILE
@@ -236,11 +240,7 @@ function sync() {
     if [ -f $real ] ; then
       mkdir -p "${backup%/*}"
       cp -u --preserve=timestamps --no-preserve=mode,ownership "$real" "$backup"
-    # elif [ ! -d $real ] ; then
-      # [ ! -f $backup ] || rm "$backup" &>/dev/null
-    # else
-    #   echo "Expected file or nothing on'$real' but found a directory \nPlease rename the directory and run '$EXE_NAME sync' again\n"
-    #   exit 1
+      stat --format="%n %a %U %G" $real >> $repo_file_metadata
     fi
   done
 
@@ -321,6 +321,21 @@ EOF
     printf "No changes\n"
   fi
 
+  if [ -f $repo_file_metadata ] ; then
+    cat $repo_file_metadata | while read line ; do
+      file=$(echo "$line" | cut -d' ' -f1)
+      permissions=$(echo "$line" | cut -d' ' -f2)
+      owner=$(echo "$line" | cut -d' ' -f3)
+      group=$(echo "$line" | cut -d' ' -f4)
+      # $(stat --format="%n %a %U %G" $file )
+      [ $(stat --format="%a" $file) = $permissions ] || chmod $permissions $file || sudo chmod $permissions $file
+      
+      [ $(stat --format="%U" $file) = $owner ] || chown $owner $file || sudo chown $owner $file
+      [ $(stat --format="%G" $file) = $group ] || chown $group $file || sudo chown $group $file
+    done
+  fi
+
+  # Hooks
   decrease_heading_level
   sync_hooks
 }
