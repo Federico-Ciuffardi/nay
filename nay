@@ -213,8 +213,10 @@ function sync() {
   draw_heading "Sync"
   increase_heading_level
 
+  MERGED=0
   if git -C "$repo_dir" rebase --show-current-patch &>/dev/null ; then
     if mergeinfo=`git -c core.editor=true -C "$repo_dir" rebase --continue 2>&1` ; then
+      MERGED=1
       echo "Conflicts resolved, proceeding with the synchronization"
     else
       echo "$mergeinfo"
@@ -231,7 +233,10 @@ function sync() {
     done
   fi
 
-  [ ! -f $repo_file_metadata ] || rm $repo_file_metadata
+  # [ ! -f $repo_file_metadata ] || rm $repo_file_metadata
+  touch $repo_file_metadata
+  changes=$(mktemp)
+  new_repo_file_metadata=$(mktemp)
 
   for FILE in $(git -C "$repo_file_dir" ls-tree -r --name-only origin/master) ; do
     real="`echo $mnt_point | sed 's#/$##g'`/$FILE"
@@ -240,9 +245,13 @@ function sync() {
     if [ -f $real ] ; then
       mkdir -p "${backup%/*}"
       cp -u --preserve=timestamps --no-preserve=mode,ownership "$real" "$backup"
-      stat --format="%n %a %U %G" $real >> $repo_file_metadata
+      if [ $MERGED -eq 0 ] ; then
+        sed "s#^$real .*\$#$real $(stat --format="%a %U %G" $real)#gw$changes" $repo_file_metadata > $new_repo_file_metadata
+        [ -s $changes ] || echo "$real $(stat --format="%a %U %G" $real)" >> $repo_file_metadata
+      fi
     fi
   done
+  cp $new_repo_file_metadata $repo_file_metadata
 
   if [ ! -z "$(git -C "$repo_file_dir" status --porcelain)" ]; then
     git -C "$repo_dir" add . &>/dev/null
