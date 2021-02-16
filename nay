@@ -340,10 +340,12 @@ EOF
       owner=$(echo "$line" | cut -d' ' -f3)
       group=$(echo "$line" | cut -d' ' -f4)
       # $(stat --format="%n %a %U %G" $file )
-      [ $(stat --format="%a" $file) = $permissions ] || chmod $permissions $file || sudo chmod $permissions $file
-      
-      [ $(stat --format="%U" $file) = $owner ] || chown $owner $file || sudo chown $owner $file
-      [ $(stat --format="%G" $file) = $group ] || chown $group $file || sudo chown $group $file
+      [ $(stat --format="%a" $file) = $permissions ] || \
+        chmod $permissions $file &> /dev/null || sudo chmod $permissions $file
+      [ $(stat --format="%U" $file) = $owner ] || \
+        chown $owner $file &> /dev/null|| sudo chown $owner $file
+      [ $(stat --format="%G" $file) = $group ] || \
+        chgrp $group $file &> /dev/null|| sudo chgrp $group $file
     done
   fi
 
