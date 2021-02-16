@@ -236,7 +236,7 @@ function sync() {
   # [ ! -f $repo_file_metadata ] || rm $repo_file_metadata
   touch $repo_file_metadata
   changes=$(mktemp)
-  new_repo_file_metadata=$(mktemp)
+  buff=$(mktemp)
 
   for FILE in $(git -C "$repo_file_dir" ls-tree -r --name-only origin/master) ; do
     real="`echo $mnt_point | sed 's#/$##g'`/$FILE"
@@ -246,12 +246,15 @@ function sync() {
       mkdir -p "${backup%/*}"
       cp -u --preserve=timestamps --no-preserve=mode,ownership "$real" "$backup"
       if [ $MERGED -eq 0 ] ; then
-        sed "s#^$real .*\$#$real $(stat --format="%a %U %G" $real)#gw$changes" $repo_file_metadata > $new_repo_file_metadata
-        [ -s $changes ] || echo "$real $(stat --format="%a %U %G" $real)" >> $repo_file_metadata
+        sed "s#^$real .*\$#$real $(stat --format="%a %U %G" $real)#gw$changes" $repo_file_metadata > $buff
+        if [ -s $changes ] ; then 
+          cp $buff $repo_file_metadata
+        else
+          echo "$real $(stat --format="%a %U %G" $real)" >> $repo_file_metadata
+        fi
       fi
     fi
   done
-  cp $new_repo_file_metadata $repo_file_metadata
 
   if [ ! -z "$(git -C "$repo_file_dir" status --porcelain)" ]; then
     git -C "$repo_dir" add . &>/dev/null
