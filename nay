@@ -238,7 +238,7 @@ function sync() {
   changes=$(mktemp)
   buff=$(mktemp)
 
-  for FILE in $(git -C "$repo_file_dir" ls-tree -r --name-only origin/master) ; do
+  for FILE in $(git -C "$repo_file_dir" ls-tree -r --name-only origin/master && git -C "$repo_file_dir" ls-files --others --exclude-standard) ; do
     real="`echo $mnt_point | sed 's#/$##g'`/$FILE"
     backup=$repo_file_dir/$FILE
 
