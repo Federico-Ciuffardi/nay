@@ -136,7 +136,80 @@ function add(){
   done
 }
 
-## PULL 
+function remote2cache() {
+  if [ -z "`git -C "$repo_dir" rev-list HEAD..origin/master`" ] ; then
+    printf "No changes\n"
+  else
+    git -C "$repo_dir" --no-pager diff --name-status HEAD origin/master
+    git -C "$repo_dir" rebase origin/master &>/dev/null || true
+    if git -C "$repo_dir" rebase --show-current-patch &>/dev/null ; then
+      echo
+      git -C "$repo_dir" rebase --continue
+      exit $?
+    fi
+
+    for FILE in $(git -C "$repo_dir" ls-files) ; do
+      TIME=$(git -C "$repo_dir" log --pretty=format:%cd -n 1 --date=iso -- "$repo_dir/$FILE")
+      TIME=`echo $TIME | sed 's/-//g;s/ //;s/://;s/:/\./;s/ .*//'`
+      touch -m -t "$TIME" "$repo_dir/$FILE"
+    done
+  fi
+}
+
+function cache2local() {
+  export change=0
+
+  while IFS= read -r backup; do
+    [ ! -d $backup ] || continue 
+
+    real="`echo $mnt_point | sed 's#/$##g'`/`realpath --relative-to="$repo_file_dir" "$backup"`"
+
+    if [ -f $real ] ; then
+        if [ $1 = "pull_force" ] || [ $backup -nt $real ] ;then
+          if ! cmp -s $backup $real ; then
+            export change=1 
+            printf "M %s\n" "$real"
+            cp -u --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" &> /dev/null ||\
+              (sudo cp -u --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" || exit $?)
+          else
+            export change=1
+            printf "T %s\n" "$real"
+            touch -r "$backup" "$real" &>/dev/null || (sudo touch -r "$backup" "$real" || exit $?)
+          fi
+        fi
+    elif [ ! -d $real ] ; then
+      export change=1
+      printf "A %s\n" "$real"
+      mkdir -p "${real%/*}" &> /dev/null || sudo mkdir -p "${real%/*}"
+      cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" ||\
+        (sudo cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" || exit $?)
+    fi
+  done << EOF
+`find "$repo_file_dir"`
+EOF
+
+  if [ $change -eq 0 ] ; then
+    printf "No changes\n"
+  fi
+
+  if [ -f $repo_file_metadata ] ; then
+    cat $repo_file_metadata | while read line ; do
+      file=$(echo "$line" | cut -d' ' -f1)
+      permissions=$(echo "$line" | cut -d' ' -f2)
+      owner=$(echo "$line" | cut -d' ' -f3)
+      group=$(echo "$line" | cut -d' ' -f4)
+      [ $(stat --format="%a" $file) = $permissions ] || \
+        chmod $permissions $file &> /dev/null || sudo chmod $permissions $file
+      [ $(stat --format="%U" $file) = $owner ] || \
+        chown $owner $file &> /dev/null|| sudo chown $owner $file
+      [ $(stat --format="%G" $file) = $group ] || \
+        chgrp $group $file &> /dev/null|| sudo chgrp $group $file
+    done
+  fi
+
+}
+
+## PULL FORCE
 function pull_force() {
   if [ ! -z $1 ] && [ $1 = "--all" ] ; then
     for repo in `ls "$repos_dir"` ; do
@@ -158,20 +231,11 @@ function pull_force() {
   git -C "$repo_dir" reset --hard &>/dev/null || exit $?
 
   draw_heading  "local    cache <- remote"
-  if [ -z "`git -C "$repo_dir" rev-list HEAD..origin/master`" ] ; then
-    printf "No changes\n"
-  else
-    git -C "$repo_dir" --no-pager diff --name-status HEAD origin/master
-    git -C "$repo_dir" pull origin master &>/dev/null || exit $?
-
-    for FILE in $(git -C "$repo_dir" ls-files) ; do
-      TIME=$(git -C "$repo_dir" log --pretty=format:%cd -n 1 --date=iso -- "$repo_dir/$FILE")
-      TIME=`echo $TIME | sed 's/-//g;s/ //;s/://;s/:/\./;s/ .*//'`
-      touch -m -t "$TIME" "$repo_dir/$FILE"
-    done
-  fi
+  remote2cache
 
   draw_heading "local <- cache    remote"
+  cache2local "pull_force"
+
   find "$repo_file_dir" | while IFS= read -r backup; do
     real="`echo $mnt_point | sed 's#/$##g'`/`realpath --relative-to="$repo_file_dir" "$backup"`"
 
@@ -233,7 +297,6 @@ function sync() {
     done
   fi
 
-  # [ ! -f $repo_file_metadata ] || rm $repo_file_metadata
   touch $repo_file_metadata
   changes=$(mktemp)
   buff=$(mktemp)
@@ -266,23 +329,7 @@ function sync() {
   fi
 
   draw_heading "local    cache <- remote"
-  if [ -z "`git -C "$repo_dir" rev-list HEAD..origin/master`" ] ; then
-    printf "No changes\n"
-  else
-    git -C "$repo_dir" --no-pager diff --name-status HEAD origin/master
-    git -C "$repo_dir" rebase origin/master &>/dev/null || true
-    if git -C "$repo_dir" rebase --show-current-patch &>/dev/null ; then
-      echo
-      git -C "$repo_dir" rebase --continue
-      exit $?
-    fi
-
-    for FILE in $(git -C "$repo_dir" ls-files) ; do
-      TIME=$(git -C "$repo_dir" log --pretty=format:%cd -n 1 --date=iso -- "$repo_dir/$FILE")
-      TIME=`echo $TIME | sed 's/-//g;s/ //;s/://;s/:/\./;s/ .*//'`
-      touch -m -t "$TIME" "$repo_dir/$FILE"
-    done
-  fi
+  remote2cache
 
   draw_heading "local    cache -> remote"
   if [ -z "`git -C "$repo_dir" rev-list origin/master..HEAD`" ] ; then
@@ -293,61 +340,7 @@ function sync() {
   fi
 
   draw_heading "local <- cache    remote"
-  export change=0
-
-  while IFS= read -r backup; do
-    [ ! -d $backup ] || continue 
-
-    real="`echo $mnt_point | sed 's#/$##g'`/`realpath --relative-to="$repo_file_dir" "$backup"`"
-
-    if [ -f $real ] ; then
-        if [ $backup -nt $real ] ;then
-          if ! cmp -s $backup $real ; then
-            export change=1 
-            printf "M %s\n" "$real"
-            cp -u --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" &> /dev/null ||\
-              (sudo cp -u --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" || exit $?)
-          else
-            export change=1
-            printf "T %s\n" "$real"
-            touch -r "$backup" "$real" &>/dev/null || (sudo touch -r "$backup" "$real" || exit $?)
-          fi
-        # elif [ $backup -ot $real ] ; then
-        #   printf "T %s\n" "$real"
-        #   if cmp -s $backup $real ; then 
-        #     touch -r "$backup" "$real" || (sudo touch -r "$backup" "$real" || exit $?)
-        #   fi
-        fi
-    elif [ ! -d $real ] ; then
-      export change=1
-      printf "A %s\n" "$real"
-      mkdir -p "${real%/*}" &> /dev/null || sudo mkdir -p "${real%/*}"
-      cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" ||\
-        (sudo cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" || exit $?)
-    fi
-  done << EOF
-`find "$repo_file_dir"`
-EOF
-
-  if [ $change -eq 0 ] ; then
-    printf "No changes\n"
-  fi
-
-  if [ -f $repo_file_metadata ] ; then
-    cat $repo_file_metadata | while read line ; do
-      file=$(echo "$line" | cut -d' ' -f1)
-      permissions=$(echo "$line" | cut -d' ' -f2)
-      owner=$(echo "$line" | cut -d' ' -f3)
-      group=$(echo "$line" | cut -d' ' -f4)
-      # $(stat --format="%n %a %U %G" $file )
-      [ $(stat --format="%a" $file) = $permissions ] || \
-        chmod $permissions $file &> /dev/null || sudo chmod $permissions $file
-      [ $(stat --format="%U" $file) = $owner ] || \
-        chown $owner $file &> /dev/null|| sudo chown $owner $file
-      [ $(stat --format="%G" $file) = $group ] || \
-        chgrp $group $file &> /dev/null|| sudo chgrp $group $file
-    done
-  fi
+  cache2local "sync"
 
   # Hooks
   decrease_heading_level
