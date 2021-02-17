@@ -141,12 +141,19 @@ function remote2cache() {
     printf "No changes\n"
   else
     git -C "$repo_dir" --no-pager diff --name-status HEAD origin/master
-    git -C "$repo_dir" rebase origin/master &>/dev/null || true
-    if git -C "$repo_dir" rebase --show-current-patch &>/dev/null ; then
-      echo
-      git -C "$repo_dir" rebase --continue
-      exit $?
-    fi
+    case $1 in
+      pull_force)
+        git -C "$repo_dir" pull origin master &>/dev/null
+        ;;
+      sync)
+        git -C "$repo_dir" rebase origin/master &>/dev/null || true
+        if git -C "$repo_dir" rebase --show-current-patch &>/dev/null ; then
+         echo
+         git -C "$repo_dir" rebase --continue
+         exit $?
+        fi
+        ;;
+    esac
 
     for FILE in $(git -C "$repo_dir" ls-files) ; do
       TIME=$(git -C "$repo_dir" log --pretty=format:%cd -n 1 --date=iso -- "$repo_dir/$FILE")
@@ -169,11 +176,11 @@ function cache2local() {
           if ! cmp -s $backup $real ; then
             export change=1 
             printf "M %s\n" "$real"
-            cp -u --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" &> /dev/null ||\
-              (sudo cp -u --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" || exit $?)
+            cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" &> /dev/null ||\
+              (sudo cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" || exit $?)
           else
-            export change=1
-            printf "T %s\n" "$real"
+            # export change=1 (tecnically a change but not necesary to let the user know as no datais modified)
+            # printf "T %s\n" "$real"
             touch -r "$backup" "$real" &>/dev/null || (sudo touch -r "$backup" "$real" || exit $?)
           fi
         fi
@@ -231,29 +238,10 @@ function pull_force() {
   git -C "$repo_dir" reset --hard &>/dev/null || exit $?
 
   draw_heading  "local    cache <- remote"
-  remote2cache
+  remote2cache "pull_force"
 
   draw_heading "local <- cache    remote"
   cache2local "pull_force"
-
-  find "$repo_file_dir" | while IFS= read -r backup; do
-    real="`echo $mnt_point | sed 's#/$##g'`/`realpath --relative-to="$repo_file_dir" "$backup"`"
-
-    [ ! -d $backup ] || continue 
-
-    if [ -f $real ] ; then
-      if ! cmp $real $backup &> /dev/null ; then
-        printf "M %s\n" "$real"
-        cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" &> /dev/null ||\
-          (sudo cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" || exit $?)
-      fi
-    elif [ ! -d $real ] ; then
-      printf "A %s\n" "$real"
-      mkdir -p "${real%/*}" &> /dev/null || sudo mkdir -p "${real%/*}"
-      cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" &> /dev/null ||\
-        (sudo cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" || exit $?)
-    fi
-  done
 
   # Hooks
   decrease_heading_level
@@ -329,7 +317,7 @@ function sync() {
   fi
 
   draw_heading "local    cache <- remote"
-  remote2cache
+  remote2cache "sync"
 
   draw_heading "local    cache -> remote"
   if [ -z "`git -C "$repo_dir" rev-list origin/master..HEAD`" ] ; then
