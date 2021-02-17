@@ -233,9 +233,10 @@ function pull_force() {
   draw_heading "Pull Force"
   increase_heading_level
 
-  git -C "$repo_dir" fetch -q || exit $?
+  git -C "$repo_dir" fetch -q
 
-  git -C "$repo_dir" reset --hard &>/dev/null || exit $?
+  git -C "$repo_dir" rebase --abort &>/dev/null || true 
+  git -C "$repo_dir" reset --hard origin/master &>/dev/null
 
   draw_heading  "local    cache <- remote"
   remote2cache "pull_force"
