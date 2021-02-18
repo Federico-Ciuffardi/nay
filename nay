@@ -18,10 +18,10 @@ Flags:
 
 Commands:
    init              Create an empty setup
-   add               Add a directory/file to the setup setup
-   sync              Syncs the config files
+   add               Start tracking a directory/file
+   remove            Stop tracking a directory/file 
+   sync              Syncs all the tracked files
    pull_force        Pull the config from remote and REPLACES the local one
-   ssh               Sets all the git origins to use ssh
 "
 #########
 # MISC  #
@@ -52,13 +52,6 @@ repos_dir="$local_dir/repos"
 # Aux #
 #######
 function set_repo(){
-  if [ -z $1 ] ; then 
-    [ -z $repo_file_dir ] || return 0
-    echo "No repo provided use one of the following or init a new one."
-    ls "$repos_dir"
-    exit 1
-  fi
-
   repo_dir="$repos_dir/$1"
 
   if [ ! -d "$repo_dir" ] ; then
@@ -66,6 +59,7 @@ function set_repo(){
     exit 1
   fi
 
+  repo_name=$1
   repo_file_dir="$repo_dir/files"
   repo_file_metadata="$repo_dir/metadata"
   repo_dirs="$repo_dir/dirs"
@@ -96,6 +90,51 @@ function sync_hooks(){
 ############
 # Commands #
 ############
+# REMOVE
+function remove(){
+  set_repo $1
+  shift
+
+  if [ $# -eq 0 ] ; then
+    echo "Nothing specified, nothing added."
+    exit 1
+  fi
+
+  while [ $# -gt 0 ]; do
+    rp="$(realpath $1)" 
+    rel_rp="$(realpath $1 --relative-to="$mnt_point")" 
+
+    rel_rp_aux="/$rel_rp"
+    repo_rp="$repo_file_dir$rel_rp_aux"
+
+    if [ ! -e "$rp" ] ; then
+      printf " \u001b[31mx\u001b[0m "
+      echo "No file on $rp" 
+      shift
+      continue
+    elif [ "$(echo $rel_rp | cut -d'/' -f1)" = ".." ] ; then
+      printf " \u001b[31mx\u001b[0m "
+      echo "$rp outside $mnt_point"
+      shift
+      continue
+    elif [ ! -e "$repo_rp" ] ; then
+      printf " \u001b[31mx\u001b[0m "
+      echo "$rp not tracked on $repo_name"
+      shift
+      continue
+    fi
+
+    rm -r $repo_rp
+    sed -i "\#^$rel_rp#d" $repo_dirs  
+    while IFS= read -r FILE; do
+      sed -i "\#^$FILE #d" $repo_file_metadata 
+    done << EOF
+$(find "$rp" -type f)
+EOF
+    shift
+  done
+
+}
 
 # ADD
 function add(){
@@ -294,15 +333,17 @@ function sync() {
     real="`echo $mnt_point | sed 's#/$##g'`/$FILE"
     backup=$repo_file_dir/$FILE
 
-    if [ -f $real ] ; then
-      mkdir -p "${backup%/*}"
-      cp -u --preserve=timestamps --no-preserve=mode,ownership "$real" "$backup"
-      if [ $MERGED -eq 0 ] ; then
-        sed "s#^$real .*\$#$real $(stat --format="%a %U %G" $real)#gw$changes" $repo_file_metadata > $buff
-        if [ -s $changes ] ; then 
-          cp $buff $repo_file_metadata
-        else
-          echo "$real $(stat --format="%a %U %G" $real)" >> $repo_file_metadata
+    if [ -f $backup ] || [ -z "$(git -C "$repo_file_dir" ls-tree HEAD $FILE 2>/dev/null)" ] ; then
+      if [ -f $real ] ; then
+        mkdir -p "${backup%/*}"
+        cp -u --preserve=timestamps --no-preserve=mode,ownership "$real" "$backup"
+        if [ $MERGED -eq 0 ] ; then
+          sed "s#^$real .*\$#$real $(stat --format="%a %U %G" $real)#gw$changes" $repo_file_metadata > $buff
+          if [ -s $changes ] ; then 
+            cp $buff $repo_file_metadata
+          else
+            echo "$real $(stat --format="%a %U %G" $real)" >> $repo_file_metadata
+          fi
         fi
       fi
     fi
@@ -414,8 +455,14 @@ while [ $# -gt 0 ]; do
       echo "$NAME $VERSION"
       exit 0
       ;;
-    init|ssh|add|sync|pkg|nonpkg|script|bootstrap|pull_force|full_sync)
+    init|ssh|add|remove|sync|pull_force)
       reset_heading_level
+      if [ $# -lt 2 ] ; then 
+        echo "No repo provided."
+        echo "Use one of the following or init a new one."
+        ls "$repos_dir"
+        exit 1
+      fi
       $@  
       exit $?
       ;;

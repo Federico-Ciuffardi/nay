@@ -14,7 +14,7 @@ _nay() {
     (args)
       curcontext="${curcontext%:*:*}:nay-cmd-$words[1]:"
       case $line[1] in
-        (add)
+        (add|remove)
           _arguments \
             '1:: :_nay_repo' \
             '2:: :_files' \
@@ -40,6 +40,7 @@ _nay_cmds() {
     # {classpath,cp}':Disnay the computed classpath'
     'init:Create an empty setup'
     'add:Add a directory/file to the setup setup'
+    'remove:Stop tracking a directory/file'
     'sync:Syncs the config files'
     'pull_force:Pull the config from remote and REPLACES the local one'
     'ssh:Sets all the git origins to use ssh'
