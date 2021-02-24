@@ -109,7 +109,7 @@ function set_gpg(){
   fi
   if [ ! -f $PASSWORD_STORE_DIR/nay.gpg ] ; then
     print_warning "Set a password for nay. Must match the last used nay password."
-    pass insert nay
+    echo "Use the command \`pass insert nay\` to set"
   fi
   GPG_SET=1
 }
@@ -390,13 +390,18 @@ function sync() {
     backup=$repo_file_dir/$FILE
 
     if [ -f $backup ] || [ -z "$(git -C "$repo_file_dir" ls-tree HEAD $FILE 2>/dev/null)" ] ; then
-      if [ -f $real ] ; then
+      if [ -f $real ] && [ $real -nt $backup ] ; then
         mkdir -p "${backup%/*}"
         if ! grep -x "$FILE" $repo_encrypted &>/dev/null ; then
           cp -u --preserve=timestamps --no-preserve=mode,ownership "$real" "$backup"
         else
           set_gpg
-          pass show nay | gpg --output "$backup" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$real" &>/dev/null
+          decripted=$(mktemp)
+          pass show nay | gpg --output "$decripted" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null
+
+          if ! cmp $real $decripted &>/dev/null ; then
+            pass show nay | gpg --output "$backup" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$real" &>/dev/null
+          fi
         fi
         if [ $MERGED -eq 0 ] ; then
           sed -i "s#^$FILE .*\$#$FILE $(stat --format="%a %U %G" $real)#gw$changes" $repo_file_metadata
