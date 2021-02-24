@@ -98,6 +98,7 @@ function  print_error(){
 }
 
 function set_gpg(){
+  [ $GPG_SET -eq 1 ] && return
   command -V gpg >/dev/null 2>&1 && GPG="gpg" || GPG="gpg2"
 	PASSWORD_STORE_DIR="${PASSWORD_STORE_DIR:-$HOME/.password-store}"
   if [ ! -r "$PASSWORD_STORE_DIR/.gpg-id" ] || ! "$GPG" --list-secret-keys "$(cat "$PASSWORD_STORE_DIR/.gpg-id")" >/dev/null 2>&1 ; then 
@@ -106,6 +107,11 @@ function set_gpg(){
     echo "(If you don't already have a GPG key pair, first run \`$GPG --full-generate-key\`.)"
     exit 1 
   fi
+  if [ ! -f $PASSWORD_STORE_DIR/nay.gpg ] ; then
+    print_warning "Set a password for nay. Must match the last used nay password."
+    pass insert nay
+  fi
+  GPG_SET=1
 }
 
 ############
@@ -168,10 +174,6 @@ function add(){
     case $1 in
       -e|--encrypt)
           set_gpg
-          if [ ! -f $PASSWORD_STORE_DIR/nay.gpg ] ; then
-            print_warning "Set a password for nay. Must match the last used nay password."
-            pass insert nay
-          fi
           encrypt_flag=1
         ;;
       *)
@@ -258,6 +260,7 @@ function cache2local() {
     real="`echo $mnt_point | sed 's#/$##g'`/$relative"
 
     if grep -x "$relative" $repo_encrypted &>/dev/null ; then
+      set_gpg
       decripted=$(mktemp)
       pass show nay | gpg --output "$decripted" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null
       touch -r "$backup" "$decripted" &>/dev/null
@@ -392,6 +395,7 @@ function sync() {
         if ! grep -x "$FILE" $repo_encrypted &>/dev/null ; then
           cp -u --preserve=timestamps --no-preserve=mode,ownership "$real" "$backup"
         else
+          set_gpg
           pass show nay | gpg --output "$backup" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$real" &>/dev/null
         fi
         if [ $MERGED -eq 0 ] ; then
@@ -499,6 +503,8 @@ set -o errexit      # Exit on most errors (see the manual)
 set -o nounset      # Disallow expansion of unset variables
 set -o pipefail     # Use last non-zero exit code in a pipeline
 set -o errtrace     # Ensure the error trap handler is inherited
+
+GPG_SET=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
