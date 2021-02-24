@@ -117,6 +117,10 @@ function set_gpg(){
 ############
 # Commands #
 ############
+function decrypt(){
+  pass show nay | gpg --output - --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$1" 2>/dev/null || (print_error "$backup broken encryption" ; exit 1)
+}
+
 # REMOVE
 function remove(){
   set_repo $1
@@ -261,10 +265,10 @@ function cache2local() {
 
     if grep -x "$relative" $repo_encrypted &>/dev/null ; then
       set_gpg
-      decripted=$(mktemp)
-      pass show nay | gpg --output "$decripted" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null || (print_error "$backup broken encryption" ; exit 1)
-      touch -r "$backup" "$decripted" &>/dev/null
-      backup="$decripted"
+      decrypted=$(mktemp)
+      pass show nay | gpg --output "$decrypted" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null || (print_error "$backup broken encryption" ; exit 1)
+      touch -r "$backup" "$decrypted" &>/dev/null
+      backup="$decrypted"
     fi
 
     if [ -f $real ] ; then
@@ -396,10 +400,10 @@ function sync() {
           cp -u --preserve=timestamps --no-preserve=mode,ownership "$real" "$backup"
         else
           set_gpg
-          decripted=$(mktemp)
-          pass show nay | gpg --output "$decripted" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null || (print_error "$backup broken encryption" ; exit 1)
+          decrypted=$(mktemp)
+          pass show nay | gpg --output "$decrypted" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null || (print_error "$backup broken encryption" ; exit 1)
 
-          if ! cmp $real $decripted &>/dev/null ; then
+          if ! cmp $real $decrypted &>/dev/null ; then
             pass show nay | gpg --output "$backup" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$real" &>/dev/null
           fi
         fi
@@ -530,6 +534,11 @@ while [ $# -gt 0 ]; do
         exit 1
       fi
       $@  
+      exit $?
+      ;;
+    decrypt)
+      reset_heading_level
+      $@
       exit $?
       ;;
     -*)
