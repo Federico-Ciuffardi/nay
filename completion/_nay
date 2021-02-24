@@ -44,6 +44,8 @@ _nay_cmds() {
     'sync:Syncs the config files'
     'pull_force:Pull the config from remote and REPLACES the local one'
     'ssh:Sets all the git origins to use ssh'
+    'setpass:Add/modify the password used for decryption'
+    'decrypt:Decrypt a file encrypted with nay'
   )
   _describe -t commands 'nay! command' commands "$@"
 }

@@ -22,6 +22,8 @@ Commands:
    remove            Stop tracking a directory/file 
    sync              Syncs all the tracked files
    pull_force        Pull the config from remote and REPLACES the local one
+   setpass           Add/modify the password used for decryption
+   decrypt           Decrypt a file encrypted with nay
 "
 #########
 # MISC  #
@@ -117,8 +119,25 @@ function set_gpg(){
 ############
 # Commands #
 ############
+function setpass(){
+  set_gpg
+  pass insert nay
+  cd $repos_dir
+  for repo in $(ls "$repos_dir") ; do
+    set_repo $repo
+    if [ -f $repo_encrypted ] ; then
+      cat $repo_encrypted | while read FILE ; do
+        real="`echo $mnt_point | sed 's#/$##g'`/$FILE"
+        backup="$repo_file_dir/$FILE"
+
+        pass show nay | gpg --output "$backup" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$real" 
+      done
+    fi
+  done
+}
+
 function decrypt(){
-  pass show nay | gpg --output - --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$1" 2>/dev/null || (print_error "$backup broken encryption" ; exit 1)
+  pass show nay | gpg --output - --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$1" 2>/dev/null || (print_error "$1 can't be decrypted, please check your password" ; exit 1)
 }
 
 # REMOVE
@@ -266,7 +285,7 @@ function cache2local() {
     if grep -x "$relative" $repo_encrypted &>/dev/null ; then
       set_gpg
       decrypted=$(mktemp)
-      pass show nay | gpg --output "$decrypted" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null || (print_error "$backup broken encryption" ; exit 1)
+      pass show nay | gpg --output "$decrypted" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null || (print_error "$backup can't be decrypted, please check your password" ; exit 1)
       touch -r "$backup" "$decrypted" &>/dev/null
       backup="$decrypted"
     fi
@@ -401,7 +420,7 @@ function sync() {
         else
           set_gpg
           decrypted=$(mktemp)
-          pass show nay | gpg --output "$decrypted" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null || (print_error "$backup broken encryption" ; exit 1)
+          pass show nay | gpg --output "$decrypted" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null || (print_error "$backup can't be decrypted, please check your password" ; exit 1)
 
           if ! cmp $real $decrypted &>/dev/null ; then
             pass show nay | gpg --output "$backup" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$real" &>/dev/null
@@ -536,7 +555,7 @@ while [ $# -gt 0 ]; do
       $@  
       exit $?
       ;;
-    decrypt)
+    decrypt|setpass)
       reset_heading_level
       $@
       exit $?
