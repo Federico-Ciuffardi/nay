@@ -67,6 +67,7 @@ function set_repo(){
   repo_sync_hooks="$repo_dir/sync_hooks"
   repo_config="$repo_dir/config"
   repo_mnt="$repo_dir/mnt"
+  repo_encrypted="$repo_dir/encrypted"
 
   [ ! -f $repo_mnt ] || mnt_point=$(bash -c "echo `cat $repo_mnt`" | sed 's#/$##g')
   [ ! -z $mnt_point ] || mnt_point='/'
@@ -87,6 +88,26 @@ function sync_hooks(){
   fi
 }
 
+function  print_warning(){
+  printf " \u001b[33m!\u001b[0m "
+  echo "$1"
+}
+function  print_error(){
+  printf " \u001b[31mx\u001b[0m "
+  echo "$1"
+}
+
+function set_gpg(){
+  command -V gpg >/dev/null 2>&1 && GPG="gpg" || GPG="gpg2"
+	PASSWORD_STORE_DIR="${PASSWORD_STORE_DIR:-$HOME/.password-store}"
+  if [ ! -r "$PASSWORD_STORE_DIR/.gpg-id" ] || ! "$GPG" --list-secret-keys "$(cat "$PASSWORD_STORE_DIR/.gpg-id")" >/dev/null 2>&1 ; then 
+    print_error "Encryption needs a password store"
+    echo "First run \`pass init <yourgpgemail>\` to set up a password archive."
+    echo "(If you don't already have a GPG key pair, first run \`$GPG --full-generate-key\`.)"
+    exit 1 
+  fi
+}
+
 ############
 # Commands #
 ############
@@ -96,7 +117,7 @@ function remove(){
   shift
 
   if [ $# -eq 0 ] ; then
-    echo "Nothing specified, nothing added."
+    echo "Nothing specified, nothing removed."
     exit 1
   fi
 
@@ -108,24 +129,23 @@ function remove(){
     repo_rp="$repo_file_dir$rel_rp_aux"
 
     if [ ! -e "$rp" ] ; then
-      printf " \u001b[31mx\u001b[0m "
-      echo "No file on $rp" 
+      print_error "No file on $rp" 
       shift
       continue
     elif [ "$(echo $rel_rp | cut -d'/' -f1)" = ".." ] ; then
-      printf " \u001b[31mx\u001b[0m "
-      echo "$rp outside $mnt_point"
+      print_error "$rp outside $mnt_point"
       shift
       continue
     elif [ ! -e "$repo_rp" ] ; then
-      printf " \u001b[31mx\u001b[0m "
-      echo "$rp not tracked on $repo_name"
+      print_error "$rp not tracked on $repo_name"
       shift
       continue
     fi
 
     rm -r $repo_rp
     sed -i "\#^$rel_rp#d" $repo_dirs  
+    sed -i "\#^$rel_rp#d" $repo_encrypted  
+
     while IFS= read -r FILE; do
       sed -i "\#^$FILE #d" $repo_file_metadata 
     done << EOF
@@ -140,39 +160,66 @@ EOF
 function add(){
   set_repo $1
   shift
+
+  encrypt_flag=0
+  files=""
   
-  if [ $# -eq 0 ] ; then
+  while [ $# -gt 0 ]; do
+    case $1 in
+      -e|--encrypt)
+          set_gpg
+          if [ ! -f $PASSWORD_STORE_DIR/nay.gpg ] ; then
+            print_warning "Set a password for nay. Must match the last used nay password."
+            pass insert nay
+          fi
+          encrypt_flag=1
+        ;;
+      *)
+        files="$files$1"$'\n'
+        ;;
+    esac
+    shift
+  done
+
+  if [ -z "$files" ] ; then
     echo "Nothing specified, nothing added."
     exit 1
   fi
 
-  while [ $# -gt 0 ]; do
-    rp="$(realpath $1)" 
-    rel_rp="$(realpath $1 --relative-to="$mnt_point")" 
+  OLDIFS=$IFS
+  IFS=$'\n'
+  for file in $files ; do
+    rp="$(realpath $file)" 
+    rel_rp="$(realpath $file --relative-to="$mnt_point")" 
 
     if [ ! -e "$rp" ] ; then
-      printf " \u001b[31mx\u001b[0m "
-      echo "No file on $rp" 
-      shift
+      print_error "No file on $rp" 
       continue
     elif [ "$(echo $rel_rp | cut -d'/' -f1)" = ".." ] ; then
-      printf " \u001b[31mx\u001b[0m "
-      echo "$rp outside $mnt_point"
-      shift
+      print_error "$rp outside $mnt_point"
       continue
     fi
 
     rel_rp_aux="/$rel_rp"
     mkdir -p "$repo_file_dir${rel_rp_aux%/*}" # remove the last file/dir from the rel_rp_aux path ex /home/fede -> /home
     # [ -e "$repo_file_dir$rel_rp_aux" ] ||
-    cp -ur --preserve=timestamps --no-preserve=mode,ownership "$rp" "$repo_file_dir${rel_rp_aux%/*}"
+    if [ $encrypt_flag -eq 0 ] ; then
+      cp -ur --preserve=timestamps --no-preserve=mode,ownership "$rp" "$repo_file_dir${rel_rp_aux%/*}"
+    else
+      if [ -d $file ] ; then
+        print_error "$rp is directory, encryption can't handle directories yet"
+        continue
+      fi
+      pass show nay | gpg --output "$repo_file_dir${rel_rp_aux}" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric --verbose "$rp" &>/dev/null
+      grep "$rel_rp" $repo_encrypted &>/dev/null || echo "$rel_rp" >> $repo_encrypted
+    fi
 
     if [ -d "$rp" ] ; then
       grep "$rel_rp" $repo_dirs &>/dev/null || echo "$rel_rp" >> $repo_dirs
     fi
-
-    shift
   done
+  IFS=$OLDIFS
+
 }
 
 function remote2cache() {
