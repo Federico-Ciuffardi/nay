@@ -263,11 +263,11 @@ function cache2local() {
             export change=1 
             printf "M %s\n" "$real"
             cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" &> /dev/null ||\
-              (sudo cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" || exit $?)
+              (sudo cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real")
           else
             # export change=1 (tecnically a change but not necesary to let the user know as no datais modified)
             # printf "T %s\n" "$real"
-            touch -r "$backup" "$real" &>/dev/null || (sudo touch -r "$backup" "$real" || exit $?)
+            touch -r "$backup" "$real" &>/dev/null || (sudo touch -r "$backup" "$real")
           fi
         fi
     elif [ ! -d $real ] ; then
@@ -275,7 +275,7 @@ function cache2local() {
       printf "A %s\n" "$real"
       mkdir -p "${real%/*}" &> /dev/null || sudo mkdir -p "${real%/*}"
       cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" ||\
-        (sudo cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" || exit $?)
+        (sudo cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real")
     fi
   done << EOF
 `find "$repo_file_dir"`
@@ -359,11 +359,11 @@ function sync() {
       echo "Conflicts resolved, proceeding with the synchronization"
     else
       echo "$mergeinfo"
-      exit $?
+      exit 1
     fi
   fi
   
-  git -C "$repo_dir" fetch -q || exit $?
+  git -C "$repo_dir" fetch -q
 
   draw_heading "local -> cache    remote"
   if [ -f $repo_dirs ] ; then
@@ -410,7 +410,7 @@ function sync() {
     printf "No changes\n"
   else
     git -C "$repo_dir" --no-pager diff --name-status origin/master HEAD
-    git -C "$repo_dir" push origin master -q || exit $?
+    git -C "$repo_dir" push origin master -q
   fi
 
   draw_heading "local <- cache    remote"
