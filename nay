@@ -210,12 +210,12 @@ function add(){
         print_error "$rp is directory, encryption can't handle directories yet"
         continue
       fi
-      pass show nay | gpg --output "$repo_file_dir${rel_rp_aux}" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric --verbose "$rp" &>/dev/null
-      grep "$rel_rp" $repo_encrypted &>/dev/null || echo "$rel_rp" >> $repo_encrypted
+      pass show nay | gpg --output "$repo_file_dir${rel_rp_aux}" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$rp" &>/dev/null
+      grep -x "$rel_rp" $repo_encrypted &>/dev/null || echo "$rel_rp" >> $repo_encrypted
     fi
 
     if [ -d "$rp" ] ; then
-      grep "$rel_rp" $repo_dirs &>/dev/null || echo "$rel_rp" >> $repo_dirs
+      grep -x "$rel_rp" $repo_dirs &>/dev/null || echo "$rel_rp" >> $repo_dirs
     fi
   done
   IFS=$OLDIFS
@@ -254,8 +254,15 @@ function cache2local() {
 
   while IFS= read -r backup; do
     [ ! -d $backup ] || continue 
+    relative="`realpath --relative-to="$repo_file_dir" "$backup"`"
+    real="`echo $mnt_point | sed 's#/$##g'`/$relative"
 
-    real="`echo $mnt_point | sed 's#/$##g'`/`realpath --relative-to="$repo_file_dir" "$backup"`"
+    if grep -x "$relative" $repo_encrypted &>/dev/null ; then
+      decripted=$(mktemp)
+      pass show nay | gpg --output "$decripted" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null
+      touch -r "$backup" "$decripted" &>/dev/null
+      backup="$decripted"
+    fi
 
     if [ -f $real ] ; then
         if [ $1 = "pull_force" ] || [ $backup -nt $real ] ;then
@@ -274,7 +281,7 @@ function cache2local() {
       export change=1
       printf "A %s\n" "$real"
       mkdir -p "${real%/*}" &> /dev/null || sudo mkdir -p "${real%/*}"
-      cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" ||\
+      cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real" &> /dev/null ||\
         (sudo cp --preserve=timestamps --no-preserve=mode,ownership "$backup" "$real")
     fi
   done << EOF
@@ -382,7 +389,11 @@ function sync() {
     if [ -f $backup ] || [ -z "$(git -C "$repo_file_dir" ls-tree HEAD $FILE 2>/dev/null)" ] ; then
       if [ -f $real ] ; then
         mkdir -p "${backup%/*}"
-        cp -u --preserve=timestamps --no-preserve=mode,ownership "$real" "$backup"
+        if ! grep -x "$FILE" $repo_encrypted &>/dev/null ; then
+          cp -u --preserve=timestamps --no-preserve=mode,ownership "$real" "$backup"
+        else
+          pass show nay | gpg --output "$backup" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$real" &>/dev/null
+        fi
         if [ $MERGED -eq 0 ] ; then
           sed -i "s#^$FILE .*\$#$FILE $(stat --format="%a %U %G" $real)#gw$changes" $repo_file_metadata
           if [ ! -s $changes ] ; then 
