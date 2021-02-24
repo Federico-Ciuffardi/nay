@@ -262,7 +262,7 @@ function cache2local() {
     if grep -x "$relative" $repo_encrypted &>/dev/null ; then
       set_gpg
       decripted=$(mktemp)
-      pass show nay | gpg --output "$decripted" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null
+      pass show nay | gpg --output "$decripted" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null || (print_error "$backup broken encryption" ; exit 1)
       touch -r "$backup" "$decripted" &>/dev/null
       backup="$decripted"
     fi
@@ -397,7 +397,7 @@ function sync() {
         else
           set_gpg
           decripted=$(mktemp)
-          pass show nay | gpg --output "$decripted" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null
+          pass show nay | gpg --output "$decripted" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null || (print_error "$backup broken encryption" ; exit 1)
 
           if ! cmp $real $decripted &>/dev/null ; then
             pass show nay | gpg --output "$backup" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$real" &>/dev/null
