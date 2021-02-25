@@ -121,6 +121,18 @@ function set_gpg(){
 ############
 function setpass(){
   set_gpg
+  failed=$(mktemp)
+  for repo in $(ls "$repos_dir") ; do
+    set_repo $repo
+    if [ -f $repo_encrypted ] ; then
+      cat $repo_encrypted | while read FILE ; do
+        real="`echo $mnt_point | sed 's#/$##g'`/$FILE"
+        backup="$repo_file_dir/$FILE"
+        pass show nay | gpg --output - --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null || \
+          echo "$FILE" >> $failed
+      done
+    fi
+  done
   pass insert nay
   cd $repos_dir
   for repo in $(ls "$repos_dir") ; do
@@ -129,12 +141,15 @@ function setpass(){
       cat $repo_encrypted | while read FILE ; do
         real="`echo $mnt_point | sed 's#/$##g'`/$FILE"
         backup="$repo_file_dir/$FILE"
-        if [ $real -nt $backup ] ; then
+        grep -x "$FILE" $failed &>/dev/null || \
           pass show nay | gpg --output "$backup" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$real" 
-        fi
       done
     fi
   done
+  if [ -s $failed ] ; then
+    echo "The following files failed to be decrypted please try another password"
+    echo $failed
+  fi
 }
 
 function decrypt(){
