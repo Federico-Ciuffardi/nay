@@ -71,9 +71,11 @@ function set_repo(){
   repo_mnt="$repo_dir/mnt"
   repo_encrypted="$repo_dir/encrypted"
 
-  [ ! -f $repo_mnt ] || mnt_point=$(bash -c "echo `cat $repo_mnt`" | sed 's#/$##g')
-  [ ! -z $mnt_point ] || mnt_point='/'
-
+  if [ -f $repo_mnt ] ; then 
+    mnt_point=$(bash -c "echo `cat $repo_mnt`" | sed 's#/$##g')
+  else
+    mnt_point=''
+  fi
 }
 
 function sync_hooks(){
@@ -211,58 +213,82 @@ function add(){
   set_repo $1
   shift
 
+  conservative_flag=0
   encrypt_flag=0
-  files=""
+  additions=""
   
   while [ $# -gt 0 ]; do
     case $1 in
       -e|--encrypt)
-          set_gpg
-          encrypt_flag=1
+        # all the added files will be encrypted
+        set_gpg
+        encrypt_flag=1
+        ;;
+      -c|--conservative)
+        # ignore files that are already in cache
+        conservative_flag=1
         ;;
       *)
-        files="$files$1"$'\n'
+        additions="$additions$1"$'\n'
         ;;
     esac
     shift
   done
 
-  if [ -z "$files" ] ; then
+  if [ -z "$additions" ] ; then
     echo "Nothing specified, nothing added."
     exit 1
   fi
 
   OLDIFS=$IFS
   IFS=$'\n'
-  for file in $files ; do
-    rp="$(realpath $file)" 
-    rel_rp="$(realpath $file --relative-to="$mnt_point")" 
+  for addition in $additions ; do
+    addition_rp="$(realpath $addition)"
+    addition_rel_rp="$(realpath $addition --relative-to="$mnt_point")"
 
-    if [ ! -e "$rp" ] ; then
-      print_error "No file on $rp" 
+    # check for errors
+    if [ ! -e "$addition_rp" ] ; then
+      print_error "No file on $addition_rp" 
       continue
-    elif [ "$(echo $rel_rp | cut -d'/' -f1)" = ".." ] ; then
-      print_error "$rp outside $mnt_point"
+    elif [ "$(echo $addition_rel_rp | cut -d'/' -f1)" = ".." ] ; then
+      print_error "$addition_rp outside $mnt_point"
       continue
     fi
 
-    rel_rp_aux="/$rel_rp"
-    mkdir -p "$repo_file_dir${rel_rp_aux%/*}" # remove the last file/dir from the rel_rp_aux path ex /home/fede -> /home
-    # [ -e "$repo_file_dir$rel_rp_aux" ] ||
-    if [ $encrypt_flag -eq 0 ] ; then
-      cp -ur --preserve=timestamps --no-preserve=mode,ownership "$rp" "$repo_file_dir${rel_rp_aux%/*}"
-    else
-      if [ -d $file ] ; then
-        print_error "$rp is directory, encryption can't handle directories yet"
+    # insert addition to the repo tracked dirs if the additon is a dir
+    if [ -d "$addition_rp" ] ; then
+      grep -x "$addition_rel_rp" $repo_dirs &>/dev/null || echo "$addition_rel_rp" >> $repo_dirs
+    fi
+
+    changes=$(mktemp)
+    # put the addtion in the cache
+    while IFS= read -r file; do
+      rp="$(realpath $file)" 
+      rel_rp="$(realpath $file --relative-to="$mnt_point")" 
+      cache_path="$repo_file_dir/$rel_rp"
+
+      if [ -e $cache_path ] && [ $conservative_flag -eq 1 ] ; then
         continue
       fi
-      pass show nay | gpg --output "$repo_file_dir${rel_rp_aux}" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$rp" &>/dev/null
-      grep -x "$rel_rp" $repo_encrypted &>/dev/null || echo "$rel_rp" >> $repo_encrypted
-    fi
 
-    if [ -d "$rp" ] ; then
-      grep -x "$rel_rp" $repo_dirs &>/dev/null || echo "$rel_rp" >> $repo_dirs
-    fi
+      rel_rp_aux="/$rel_rp"
+      mkdir -p "$repo_file_dir${rel_rp_aux%/*}" # remove the last file/dir from the rel_rp_aux path ex /home/fede -> /home
+
+      if [ $encrypt_flag -eq 0 ] && ! grep -x "$rel_rp" $repo_encrypted &>/dev/null  ; then
+        cp -ur --preserve=timestamps --no-preserve=mode,ownership "$rp" "$repo_file_dir${rel_rp_aux%/*}"
+      else
+        pass show nay | gpg --output "$cache_path" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$rp" &>/dev/null
+        grep -x "$rel_rp" $repo_encrypted &>/dev/null || echo "$rel_rp" >> $repo_encrypted
+      fi
+
+      sed -i "s#^$rel_rp .*\$#$rel_rp $(stat --format="%a %U %G" $rp)#gw$changes" $repo_file_metadata
+      if [ ! -s $changes ] ; then 
+        echo "$rel_rp $(stat --format="%a %U %G" $rp)" >> $repo_file_metadata
+      fi
+
+    done << EOF
+$(find "$addition" -type f)
+EOF
   done
   IFS=$OLDIFS
 
@@ -422,7 +448,7 @@ function sync() {
   draw_heading "local -> cache    remote"
   if [ -f $repo_dirs ] ; then
     cat $repo_dirs | while read dir ; do
-      add "`echo $1 | sed 's#/$##g'`" $mnt_point/$dir
+      add "`echo $1 | sed 's#/$##g'`" -c $mnt_point/$dir
     done
   fi
 
@@ -487,18 +513,14 @@ function sync() {
 
 ## INIT 
 function init() {
-  repo_url=$1
-  if [ -z $repo_url ] ; then
+  if [ $# -gt 0 ] ; then
+    repo_url=$1
+  else
     printf "Enter a valid (e.g. empty) git repository to keep your setup (ssh and private recomended):\n"
     read repo_url
   fi
   repo_name="`echo ${repo_url##*/} | cut -d'.' -f1`"
   repo_dir="$repos_dir/$repo_name"
-
-  if [ -d "$repo_dir/.git" ] ; then
-    printf "Already initialized\nTry '$EXE_NAME --help' for more information.\n"
-    return 1
-  fi
 
   if [ -d "$repo_dir" ] ; then
     printf "Dirty directory remove?[Y/n]:"
@@ -514,8 +536,7 @@ function init() {
 
   git -C "$repo_dir" init -b master &>/dev/null
   git -C "$repo_dir" remote add origin $repo_url &>/dev/null
-
-  git  -C "$repo_dir" pull origin master &>/dev/null
+  git  -C "$repo_dir" pull origin master &>/dev/null || true
 
   mkdir -p $repo_file_dir  
   mkdir -p $repo_sync_hooks
@@ -565,7 +586,7 @@ while [ $# -gt 0 ]; do
       echo "$NAME $VERSION"
       exit 0
       ;;
-    init|ssh|add|remove|sync|pull_force)
+    ssh|add|remove|sync|pull_force)
       reset_heading_level
       if [ $# -lt 2 ] ; then 
         echo "No repo provided."
@@ -576,7 +597,7 @@ while [ $# -gt 0 ]; do
       $@  
       exit $?
       ;;
-    decrypt|setpass)
+    init|decrypt|setpass)
       reset_heading_level
       $@
       exit $?
