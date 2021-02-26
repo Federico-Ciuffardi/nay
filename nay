@@ -141,14 +141,19 @@ function setpass(){
       cat $repo_encrypted | while read FILE ; do
         real="`echo $mnt_point | sed 's#/$##g'`/$FILE"
         backup="$repo_file_dir/$FILE"
-        grep -x "$FILE" $failed &>/dev/null || \
+        if grep -x "$FILE" $failed &>/dev/null ; then
+          if pass show nay | gpg --output - --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null ; then 
+            sed -i "\#^$FILE#d" $failed  
+          fi
+        else
           pass show nay | gpg --output "$backup" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$real" 
+        fi
       done
     fi
   done
   if [ -s $failed ] ; then
-    echo "The following files failed to be decrypted please try another password"
-    echo $failed
+    print_error "The following files failed to be decrypted please try another password"
+    cat $failed
   fi
 }
 
