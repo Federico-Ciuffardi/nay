@@ -174,35 +174,37 @@ function remove(){
   fi
 
   while [ $# -gt 0 ]; do
-    rp="$(realpath $1)" 
-    rel_rp="$(realpath $1 --relative-to="$mnt_point")" 
+    removal="$1"
+    removal_rp="$(realpath $removal)" 
+    removal_rel_rp="$(realpath $removal --relative-to="$mnt_point")" 
+    removal_cache_path="$repo_file_dir/$removal_rel_rp"
 
-    rel_rp_aux="/$rel_rp"
-    repo_rp="$repo_file_dir$rel_rp_aux"
-
-    if [ ! -e "$rp" ] ; then
-      print_error "No file on $rp" 
+    if [ ! -e "$removal_rp" ] ; then
+      print_error "No file on $removal_rp" 
       shift
       continue
-    elif [ "$(echo $rel_rp | cut -d'/' -f1)" = ".." ] ; then
-      print_error "$rp outside $mnt_point"
+    elif [ "$(echo $removal_rel_rp | cut -d'/' -f1)" = ".." ] ; then
+      print_error "$removal_rp outside $mnt_point"
       shift
       continue
-    elif [ ! -e "$repo_rp" ] ; then
-      print_error "$rp not tracked on $repo_name"
+    elif [ ! -e "$removal_cache_path" ] ; then
+      print_error "$removal_rp not tracked on $repo_name"
       shift
       continue
     fi
 
-    rm -r $repo_rp
-    sed -i "\#^$rel_rp#d" $repo_dirs  
-    sed -i "\#^$rel_rp#d" $repo_encrypted  
+    while IFS= read -r file; do
+      rel_rp="$(realpath $file --relative-to="$repo_file_dir")" 
 
-    while IFS= read -r FILE; do
-      sed -i "\#^$FILE #d" $repo_file_metadata 
+      sed -i "\#^$rel_rp\$#d" $repo_dirs  
+      sed -i "\#^$rel_rp\$#d" $repo_encrypted  
+      sed -i "\#^$rel_rp #d" $repo_file_metadata 
     done << EOF
-$(find "$rel_rp" -type f)
+$(find "$removal_cache_path")
 EOF
+
+    rm -r $removal_cache_path
+
     shift
   done
 
