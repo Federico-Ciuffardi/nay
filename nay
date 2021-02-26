@@ -72,7 +72,8 @@ function set_repo(){
   repo_encrypted="$repo_dir/encrypted"
 
   if [ -f $repo_mnt ] ; then 
-    mnt_point=$(bash -c "echo `cat $repo_mnt`" | sed 's#/$##g')
+    mnt_point="$(bash -c "echo `cat $repo_mnt`" | sed 's#/$##g')"
+    [ ! -z $mnt_point ] || mnt_point="/"
   else
     mnt_point=''
   fi
@@ -196,9 +197,9 @@ function remove(){
     while IFS= read -r file; do
       rel_rp="$(realpath $file --relative-to="$repo_file_dir")" 
 
-      sed -i "\#^$rel_rp\$#d" $repo_dirs  
-      sed -i "\#^$rel_rp\$#d" $repo_encrypted  
-      sed -i "\#^$rel_rp #d" $repo_file_metadata 
+      [ ! -f $repo_dirs ] || sed -i "\#^$rel_rp\$#d" $repo_dirs  
+      [ ! -f $repo_encrypted ] || sed -i "\#^$rel_rp\$#d" $repo_encrypted  
+      [ ! -f $repo_file_metadata ] || sed -i "\#^$rel_rp #d" $repo_file_metadata 
     done << EOF
 $(find "$removal_cache_path")
 EOF
