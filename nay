@@ -369,7 +369,7 @@ EOF
   fi
 
   if [ -f $repo_file_metadata ] ; then
-    cat $repo_file_metadata | while read line ; do
+    while IFS= read -r line; do
       file=$mnt_point/$(echo "$line" | cut -d' ' -f1)
       permissions=$(echo "$line" | cut -d' ' -f2)
       owner=$(echo "$line" | cut -d' ' -f3)
@@ -380,7 +380,9 @@ EOF
         chown $owner $file &> /dev/null|| sudo chown $owner $file
       [ $(stat --format="%G" $file) = $group ] || \
         chgrp $group $file &> /dev/null|| sudo chgrp $group $file
-    done
+  done << EOF
+`cat $repo_file_metadata`
+EOF
   fi
 
 }
@@ -476,11 +478,11 @@ function sync() {
             pass show nay | gpg --output "$backup" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$real" &>/dev/null
           fi
         fi
-        if [ $MERGED -eq 0 ] ; then
-          sed -i "s#^$FILE .*\$#$FILE $(stat --format="%a %U %G" $real)#gw$changes" $repo_file_metadata
-          if [ ! -s $changes ] ; then 
-            echo "$FILE $(stat --format="%a %U %G" $real)" >> $repo_file_metadata
-          fi
+      fi
+      if [ $MERGED -eq 0 ] ; then
+        sed -i "s#^$FILE .*\$#$FILE $(stat --format="%a %U %G" $real)#gw$changes" $repo_file_metadata
+        if [ ! -s $changes ] ; then 
+          echo "$FILE $(stat --format="%a %U %G" $real)" >> $repo_file_metadata
         fi
       fi
     fi
