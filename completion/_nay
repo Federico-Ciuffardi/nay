@@ -16,8 +16,12 @@ _nay() {
       case $line[1] in
         (add|remove)
           _arguments \
-            '1:: :_nay_repo' \
-            '2:: :_files' \
+            '1: :_nay_repo' \
+            '*: :_files' \
+            '-e[All the added files will be encrypted]' \
+            '--encrypt[All the added files will be encrypted]' \
+            '-c[Ignore files that are already in cache]' \
+            '--conservative[Ignore files that are already in cache]' \
           && ret=0
         ;;
         (sync|pull_force|pkg|nonpkg|bootstrap|full_sync)
@@ -31,6 +35,7 @@ _nay() {
         ;;
       esac
     ;;
+
   esac
 }
 
