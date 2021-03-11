@@ -493,7 +493,7 @@ function sync() {
   if [ ! -z "$(git -C "$repo_file_dir" status --porcelain)" ]; then
     git -C "$repo_dir" add . &>/dev/null
     output_file=$(mktemp)
-    git -C "$repo_dir" commit -m "`hostname`" &>"${output_file}" || (cat "${output_file}" && exit 1)
+    git -C "$repo_dir" commit -m "`cat '/etc/hostname'`" &>"${output_file}" || (cat "${output_file}" && exit 1)
     git -C "$repo_dir" --no-pager diff --name-status  HEAD~1 HEAD
   else
     printf "No changes\n"
