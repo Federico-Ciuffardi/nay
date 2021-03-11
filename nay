@@ -556,7 +556,7 @@ function init() {
   fi
 
   git -C "$repo_dir" add . &>/dev/null
-  git -C "$repo_dir" commit -m "`hostname`" &>/dev/null
+  git -C "$repo_dir" commit -m "`cat '/etc/hostname'`" &>/dev/null
   git -C "$repo_dir" push -u origin master &>/dev/null
 
   printf "Initialized!\n"
