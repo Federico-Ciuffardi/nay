@@ -176,8 +176,8 @@ function remove(){
 
   while [ $# -gt 0 ]; do
     removal="$1"
-    removal_rp="$(realpath $removal)" 
-    removal_rel_rp="$(realpath $removal --relative-to="$mnt_point")" 
+    removal_rp="$(realpath -m $removal)" 
+    removal_rel_rp="$(realpath -m $removal --relative-to="$mnt_point")" 
     removal_cache_path="$repo_file_dir/$removal_rel_rp"
 
     if [ ! -e "$removal_rp" ] ; then
@@ -195,7 +195,7 @@ function remove(){
     fi
 
     while IFS= read -r file; do
-      rel_rp="$(realpath $file --relative-to="$repo_file_dir")" 
+      rel_rp="$(realpath -m $file --relative-to="$repo_file_dir")" 
 
       [ ! -f $repo_dirs ] || sed -i "\#^$rel_rp\$#d" $repo_dirs  
       [ ! -f $repo_encrypted ] || sed -i "\#^$rel_rp\$#d" $repo_encrypted  
@@ -246,8 +246,8 @@ function add(){
   OLDIFS=$IFS
   IFS=$'\n'
   for addition in $additions ; do
-    addition_rp="$(realpath $addition)"
-    addition_rel_rp="$(realpath $addition --relative-to="$mnt_point")"
+    addition_rp="$(realpath -m $addition)"
+    addition_rel_rp="$(realpath -m $addition --relative-to="$mnt_point")"
 
     # check for errors
     if [ ! -e "$addition_rp" ] ; then
@@ -266,8 +266,8 @@ function add(){
     changes=$(mktemp)
     # put the addtion in the cache
     while IFS= read -r file; do
-      rp="$(realpath $file)" 
-      rel_rp="$(realpath $file --relative-to="$mnt_point")" 
+      rp="$(realpath -m $file)" 
+      rel_rp="$(realpath -m $file --relative-to="$mnt_point")" 
       cache_path="$repo_file_dir/$rel_rp"
 
       if [ -e $cache_path ] && [ $conservative_flag -eq 1 ] ; then
@@ -329,7 +329,7 @@ function cache2local() {
 
   while IFS= read -r backup; do
     [ ! -d $backup ] || continue 
-    relative="`realpath --relative-to="$repo_file_dir" "$backup"`"
+    relative="`realpath -m --relative-to="$repo_file_dir" "$backup"`"
     real="`echo $mnt_point | sed 's#/$##g'`/$relative"
 
     if grep -x "$relative" $repo_encrypted &>/dev/null ; then
