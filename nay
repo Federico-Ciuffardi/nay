@@ -65,9 +65,7 @@ function set_repo(){
   repo_file_dir="$repo_dir/files"
   repo_file_metadata="$repo_dir/metadata"
   repo_dirs="$repo_dir/dirs"
-  repo_sync_hook="$repo_dir/sync_hook"
   repo_sync_hooks="$repo_dir/sync_hooks"
-  repo_config="$repo_dir/config"
   repo_mnt="$repo_dir/mnt"
   repo_encrypted="$repo_dir/encrypted"
 
@@ -554,6 +552,10 @@ function init() {
     [ ! -z $mnt ] || mnt="\$HOME"
     echo "$mnt" > "$repo_dir/mnt"
   fi
+
+  touch $repo_file_metadata 
+  touch $repo_encrypted
+  touch $repo_dirs
 
   git -C "$repo_dir" add . &>/dev/null
   git -C "$repo_dir" commit -m "`cat '/etc/hostname'`" &>/dev/null
