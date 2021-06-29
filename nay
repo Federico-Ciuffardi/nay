@@ -22,6 +22,7 @@ Commands:
    remove            Stop tracking a directory/file 
    sync              Syncs all the tracked files
    pull_force        Pull the config from remote and REPLACES the local one
+   push_force        Push the config from local and REPLACES the remote one
    setpass           Add/modify the password used for decryption
    decrypt           Decrypt a file encrypted with nay
 "
@@ -57,7 +58,8 @@ function set_repo(){
   repo_dir="$repos_dir/$1"
 
   if [ ! -d "$repo_dir" ] ; then
-    printf "Not initialized, please initialize it with '$EXE_NAME init' first\n"
+
+    printf "\"%s\" not initialized, please initialize it with '$EXE_NAME init' first\n" "$repo_dir" 
     exit 1
   fi
 
@@ -295,6 +297,57 @@ EOF
 
 }
 
+function local2cache(){
+  if [ -f $repo_dirs ] ; then
+    cat $repo_dirs | while read dir ; do
+      add "`echo $repo_name | sed 's#/$##g'`" -c $mnt_point/$dir
+    done
+  fi
+
+  touch $repo_file_metadata
+  changes=$(mktemp)
+
+  for FILE in $(git -C "$repo_file_dir" ls-tree -r --name-only origin/master && git -C "$repo_file_dir" ls-files --others --exclude-standard) ; do
+    real="`echo $mnt_point | sed 's#/$##g'`/$FILE"
+    backup=$repo_file_dir/$FILE
+
+    if [ -f $backup ] || [ -z "$(git -C "$repo_file_dir" ls-tree HEAD $FILE 2>/dev/null)" ] ; then
+      if [ -f $real ] ; then
+        if [ $1 = "push_force" ] || [ $real -nt $backup ] ; then
+          mkdir -p "${backup%/*}"
+          if ! grep -x "$FILE" $repo_encrypted &>/dev/null ; then
+            cp -u --preserve=timestamps --no-preserve=mode,ownership "$real" "$backup"
+          else
+            set_gpg
+            decrypted=$(mktemp)
+            pass show nay | gpg --output "$decrypted" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null || (print_error "$backup can't be decrypted, please check your password" ; exit 1)
+
+            if ! cmp $real $decrypted &>/dev/null ; then
+              pass show nay | gpg --output "$backup" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$real" &>/dev/null
+            fi
+          fi
+        fi
+        MERGED=${MERGED:-}
+        if [ -z $MERGED ] || [ $MERGED -eq 0 ] ; then
+          sed -i "s#^$FILE .*\$#$FILE $(stat --format="%a %U %G" $real)#gw$changes" $repo_file_metadata
+          if [ ! -s $changes ] ; then 
+            echo "$FILE $(stat --format="%a %U %G" $real)" >> $repo_file_metadata
+          fi
+        fi
+      fi
+    fi
+  done
+
+  if [ ! -z "$(git -C "$repo_file_dir" status --porcelain)" ]; then
+    git -C "$repo_dir" add . &>/dev/null
+    output_file=$(mktemp)
+    git -C "$repo_dir" commit -m "`cat '/etc/hostname'`" &>"${output_file}" || (cat "${output_file}" && exit 1)
+    git -C "$repo_dir" --no-pager diff --name-status  HEAD~1 HEAD
+  else
+    printf "No changes\n"
+  fi
+}
+
 function remote2cache() {
   if [ -z "`git -C "$repo_dir" rev-list HEAD..origin/master`" ] ; then
     printf "No changes\n"
@@ -385,6 +438,51 @@ EOF
 
 }
 
+function cache2remote(){
+  if [ -z "`git -C "$repo_dir" rev-list origin/master..HEAD`" ] ; then
+    printf "No changes\n"
+  else
+    git -C "$repo_dir" --no-pager diff --name-status origin/master HEAD
+    git -C "$repo_dir" push origin master -q
+  fi
+}
+
+## PUSH FORCE
+function push_force() {
+  if [ ! -z $1 ] && [ $1 = "--all" ] ; then
+    for repo in `ls "$repos_dir"` ; do
+      reset_heading_level
+      printf "\u001b[32;1m$repo\u001b[0m\n"
+      push_force $repo
+      printf "\n"
+    done
+    exit 0
+  fi
+
+  set_repo $1
+
+  draw_heading "Push Force"
+  increase_heading_level
+
+  printf "This will replace your remote config with your local one without synchronization.\n"
+  printf "Are you sure?[y/N]:"
+  read awns
+  [ "$awns" = "y" ] || exit 0
+
+  git -C "$repo_dir" fetch -q
+
+  git -C "$repo_dir" rebase --abort &>/dev/null || true 
+  git -C "$repo_dir" reset --hard origin/master &>/dev/null
+
+  draw_heading  "local -> cache    remote"
+  local2cache "push_force"
+
+  draw_heading "local    cache -> remote"
+  cache2remote "push_force"
+
+}
+
+
 ## PULL FORCE
 function pull_force() {
   if [ ! -z $1 ] && [ $1 = "--all" ] ; then
@@ -401,6 +499,11 @@ function pull_force() {
 
   draw_heading "Pull Force"
   increase_heading_level
+
+  printf "This will replace your local config with your remote one without synchronization.\n"
+  printf "Are you sure?[y/N]:"
+  read awns
+  [ "$awns" = "y" ] || exit 0
 
   git -C "$repo_dir" fetch -q
 
@@ -449,64 +552,13 @@ function sync() {
   git -C "$repo_dir" fetch -q
 
   draw_heading "local -> cache    remote"
-  if [ -f $repo_dirs ] ; then
-    cat $repo_dirs | while read dir ; do
-      add "`echo $1 | sed 's#/$##g'`" -c $mnt_point/$dir
-    done
-  fi
-
-  touch $repo_file_metadata
-  changes=$(mktemp)
-
-  for FILE in $(git -C "$repo_file_dir" ls-tree -r --name-only origin/master && git -C "$repo_file_dir" ls-files --others --exclude-standard) ; do
-    real="`echo $mnt_point | sed 's#/$##g'`/$FILE"
-    backup=$repo_file_dir/$FILE
-
-    if [ -f $backup ] || [ -z "$(git -C "$repo_file_dir" ls-tree HEAD $FILE 2>/dev/null)" ] ; then
-      if [ -f $real ] ; then
-        if [ $real -nt $backup ] ; then
-          mkdir -p "${backup%/*}"
-          if ! grep -x "$FILE" $repo_encrypted &>/dev/null ; then
-            cp -u --preserve=timestamps --no-preserve=mode,ownership "$real" "$backup"
-          else
-            set_gpg
-            decrypted=$(mktemp)
-            pass show nay | gpg --output "$decrypted" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null || (print_error "$backup can't be decrypted, please check your password" ; exit 1)
-
-            if ! cmp $real $decrypted &>/dev/null ; then
-              pass show nay | gpg --output "$backup" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$real" &>/dev/null
-            fi
-          fi
-        fi
-        if [ $MERGED -eq 0 ] ; then
-          sed -i "s#^$FILE .*\$#$FILE $(stat --format="%a %U %G" $real)#gw$changes" $repo_file_metadata
-          if [ ! -s $changes ] ; then 
-            echo "$FILE $(stat --format="%a %U %G" $real)" >> $repo_file_metadata
-          fi
-        fi
-      fi
-    fi
-  done
-
-  if [ ! -z "$(git -C "$repo_file_dir" status --porcelain)" ]; then
-    git -C "$repo_dir" add . &>/dev/null
-    output_file=$(mktemp)
-    git -C "$repo_dir" commit -m "`cat '/etc/hostname'`" &>"${output_file}" || (cat "${output_file}" && exit 1)
-    git -C "$repo_dir" --no-pager diff --name-status  HEAD~1 HEAD
-  else
-    printf "No changes\n"
-  fi
+  local2cache "sync"
 
   draw_heading "local    cache <- remote"
   remote2cache "sync"
 
   draw_heading "local    cache -> remote"
-  if [ -z "`git -C "$repo_dir" rev-list origin/master..HEAD`" ] ; then
-    printf "No changes\n"
-  else
-    git -C "$repo_dir" --no-pager diff --name-status origin/master HEAD
-    git -C "$repo_dir" push origin master -q
-  fi
+  cache2remote "sync"
 
   draw_heading "local <- cache    remote"
   cache2local "sync"
@@ -595,7 +647,7 @@ while [ $# -gt 0 ]; do
       echo "$NAME $VERSION"
       exit 0
       ;;
-    ssh|add|remove|sync|pull_force)
+    ssh|add|remove|sync|pull_force|push_force)
       reset_heading_level
       if [ $# -lt 2 ] ; then 
         echo "No repo provided."
