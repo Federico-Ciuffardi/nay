@@ -588,12 +588,14 @@ function init() {
   fi
 
   # set up 
-  mkdir -p $repo_dir  
+  mkdir -p $repos_dir  
+  cd $repos_dir
+  git clone $repo_url
   set_repo ${repo_name}
 
-  git -C "$repo_dir" init -b master &>/dev/null
-  git -C "$repo_dir" remote add origin $repo_url &>/dev/null
-  git  -C "$repo_dir" pull origin master &>/dev/null || true
+  # git -C "$repo_dir" init -b master &>/dev/null
+  # git -C "$repo_dir" remote add origin $repo_url &>/dev/null
+  # git  -C "$repo_dir" pull origin master &>/dev/null || true
 
   mkdir -p $repo_file_dir  
   mkdir -p $repo_sync_hooks
