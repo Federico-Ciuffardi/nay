@@ -136,7 +136,7 @@ function setpass(){
       done
     fi
   done
-  pass insert nay
+  pass insert nay || true 
   cd $repos_dir
   for repo in $(ls "$repos_dir") ; do
     set_repo $repo
@@ -421,7 +421,7 @@ EOF
 
   if [ -f $repo_file_metadata ] ; then
     while IFS= read -r line; do
-      file=$mnt_point/$(echo "$line" | cut -d' ' -f1)
+      file=$(echo $mnt_point/$(echo "$line" | cut -d' ' -f1) | sed 's#//#/#g')
       permissions=$(echo "$line" | cut -d' ' -f2)
       owner=$(echo "$line" | cut -d' ' -f3)
       group=$(echo "$line" | cut -d' ' -f4)
@@ -590,30 +590,30 @@ function init() {
   # set up 
   mkdir -p $repos_dir  
   cd $repos_dir
-  git clone $repo_url
-  set_repo ${repo_name}
+  git clone $repo_url &> /dev/null
+  # set_repo ${repo_name}
 
   # git -C "$repo_dir" init -b master &>/dev/null
   # git -C "$repo_dir" remote add origin $repo_url &>/dev/null
   # git  -C "$repo_dir" pull origin master &>/dev/null || true
 
-  mkdir -p $repo_file_dir  
-  mkdir -p $repo_sync_hooks
+  # mkdir -p $repo_file_dir  
+  # mkdir -p $repo_sync_hooks
 
-  if [ ! -f $repo_mnt ] ; then
-    printf "Enter a mount point for the files [\$HOME]:"
-    read mnt
-    [ ! -z $mnt ] || mnt="\$HOME"
-    echo "$mnt" > "$repo_dir/mnt"
-  fi
+  # if [ ! -f $repo_mnt ] ; then
+  #   printf "Enter a mount point for the files [\$HOME]:"
+  #   read mnt
+  #   [ ! -z $mnt ] || mnt="\$HOME"
+  #   echo "$mnt" > "$repo_dir/mnt"
+  # fi
 
-  touch $repo_file_metadata 
-  touch $repo_encrypted
-  touch $repo_dirs
+  # touch $repo_file_metadata 
+  # touch $repo_encrypted
+  # touch $repo_dirs
 
-  git -C "$repo_dir" add . &>/dev/null
-  git -C "$repo_dir" commit -m "`cat '/etc/hostname'`" &>/dev/null
-  git -C "$repo_dir" push -u origin master &>/dev/null
+  # git -C "$repo_dir" add . &>/dev/null
+  # git -C "$repo_dir" commit -m "`cat '/etc/hostname'`" &>/dev/null
+  # git -C "$repo_dir" push -u origin master &>/dev/null
 
   printf "Initialized!\n"
 }
