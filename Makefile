@@ -1,8 +1,8 @@
-link: nay
-	ln --force nay /usr/bin/nay
-	ln --force naylib /usr/lib/naylib
+install: nay
+	cp nay /usr/bin/nay
+	cp lib/naylib /usr/lib/naylib
 
-unlink: nay
+uninstall: nay
 	rm --force /usr/bin/nay
 	rm --force /usr/lib/naylib
 
