@@ -580,11 +580,14 @@ function init() {
   repo_dir="$repos_dir/$repo_name"
 
   if [ -d "$repo_dir" ] ; then
-    printf "Dirty directory remove?[Y/n]:"
-    read awns
-    [ -z $awns ] || [ $awns = "y" ] || exit 0
-    rm -rf "$repo_dir"
-    printf "\n"
+    printf "$repo_name already initialized\n"
+    printf "Delete $repo_dir if this is not OK\n"
+    exit 0
+    # printf "Dirty directory remove?[Y/n]:"
+    # read awns
+    # [ -z $awns ] || [ $awns = "y" ] || exit 0
+    # rm -rf "$repo_dir"
+    # printf "\n"
   fi
 
   # set up 
