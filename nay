@@ -128,7 +128,6 @@ function set_gpg(){
   fi
   if [ ! -f $PASSWORD_STORE_DIR/nay.gpg ] ; then
     print_warning "Set a password for nay. Must match the last used nay password."
-    echo "Use the command \`pass insert nay\` to set"
   fi
   GPG_SET=1
 }
@@ -138,39 +137,43 @@ function set_gpg(){
 ############
 function setpass(){
   set_gpg
-  failed=$(mktemp)
-  for repo in $(ls "$repos_dir") ; do
-    set_repo $repo
-    if [ -f $repo_encrypted ] ; then
-      cat $repo_encrypted | while read FILE ; do
-        real="`echo $mnt_point | sed 's#/$##g'`/$FILE"
-        backup="$repo_file_dir/$FILE"
-        pass show nay | gpg --output - --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null || \
-          echo "$FILE" >> $failed
-      done
-    fi
-  done
-  pass insert nay || true 
-  cd $repos_dir
-  for repo in $(ls "$repos_dir") ; do
-    set_repo $repo
-    if [ -f $repo_encrypted ] ; then
-      cat $repo_encrypted | while read FILE ; do
-        real="`echo $mnt_point | sed 's#/$##g'`/$FILE"
-        backup="$repo_file_dir/$FILE"
-        if grep -x "$FILE" $failed &>/dev/null ; then
-          if pass show nay | gpg --output - --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null ; then 
-            sed -i "\#^$FILE#d" $failed  
+  if [ -f $PASSWORD_STORE_DIR/nay.gpg ] ; then
+    failed=$(mktemp)
+    for repo in $(ls "$repos_dir") ; do
+      set_repo $repo
+      if [ -f $repo_encrypted ] ; then
+        cat $repo_encrypted | while read FILE ; do
+          real="`echo $mnt_point | sed 's#/$##g'`/$FILE"
+          backup="$repo_file_dir/$FILE"
+          pass show nay | gpg --output - --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null || \
+            echo "$FILE" >> $failed
+        done
+      fi
+    done
+    pass insert nay || true 
+    cd $repos_dir
+    for repo in $(ls "$repos_dir") ; do
+      set_repo $repo
+      if [ -f $repo_encrypted ] ; then
+        cat $repo_encrypted | while read FILE ; do
+          real="`echo $mnt_point | sed 's#/$##g'`/$FILE"
+          backup="$repo_file_dir/$FILE"
+          if grep -x "$FILE" $failed &>/dev/null ; then
+            if pass show nay | gpg --output - --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 "$backup" &>/dev/null ; then 
+              sed -i "\#^$FILE#d" $failed  
+            fi
+          else
+            pass show nay | gpg --output "$backup" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$real" 
           fi
-        else
-          pass show nay | gpg --output "$backup" --no-symkey-cache --pinentry-mode=loopback --batch --yes --passphrase-fd 0 --symmetric "$real" 
-        fi
-      done
+        done
+      fi
+    done
+    if [ -s $failed ] ; then
+      print_error "The following files failed to be decrypted please try another password"
+      cat $failed
     fi
-  done
-  if [ -s $failed ] ; then
-    print_error "The following files failed to be decrypted please try another password"
-    cat $failed
+  else
+    pass insert nay || true 
   fi
 }
 
