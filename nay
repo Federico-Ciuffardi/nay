@@ -10,22 +10,36 @@ VERSION="0.1.0"
 
 HELP_MSG="$NAME $VERSION
 
-Usage: $EXE_NAME [<flags>] <command>
+Usage: $EXE_NAME [<flags>] [<command> [<args>]]
 
 Flags:
-  -v, --version  output version information and exit
-  -h, --help     display this help and exit
+  -v, --version     Output version information and exit
+  -h, --help        Display this help and exit
 
 Commands:
-   init              Create an empty setup
-   add               Start tracking a directory/file
-   remove            Stop tracking a directory/file 
-   sync              Syncs all the tracked files
-   pull_force        Pull the config from remote and REPLACES the local one
-   push_force        Push the config from local and REPLACES the remote one
-   setpass           Add/modify the password used for decryption
-   decrypt           Decrypt a file encrypted with nay
+  init              Create an empty setup
+  add               Start tracking a directory/file
+  remove            Stop tracking a directory/file 
+  sync              Syncs all the tracked files
+  pull_force        Pull the config from remote and REPLACES the local one
+  push_force        Push the config from local and REPLACES the remote one
+  setpass           Add/modify the password used for decryption
+  decrypt           Decrypt a file encrypted with nay
+
+Args:
+  -h, --help        Display help for the command (including the rest of the args)
 "
+PULL_FORCE_HELP_MSG="$NAME $VERSION
+
+Usage: $EXE_NAME pull_force [<args>] <repo>
+
+Args:
+  -h, --help        Display this help and exit
+  -y, --yes         Do not ask for confirmation
+  -a, --all         Pull force all the initialized repos (no <repo> needed)
+"
+
+
 #########
 # MISC  #
 #########
@@ -485,25 +499,49 @@ function push_force() {
 
 ## PULL FORCE
 function pull_force() {
-  if [ ! -z $1 ] && [ $1 = "--all" ] ; then
-    for repo in `ls "$repos_dir"` ; do
-      reset_heading_level
-      printf "\u001b[32;1m$repo\u001b[0m\n"
-      pull_force $repo
-      printf "\n"
-    done
-    exit 0
-  fi
+  yes=0
+  repo=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h|--help)
+        echo "$PULL_FORCE_HELP_MSG"
+        exit 0
+        ;;
+      -y|--yes)
+        yes=1
+        ;;
+      -a|--all)
+        for repo in `ls "$repos_dir"` ; do
+          reset_heading_level
+          printf "\u001b[32;1m$repo\u001b[0m\n"
+          pull_force $repo
+          printf "\n"
+        done
+        exit 0
+        ;;
+      -*)
+        echo "'$1' is not a \"$EXE_NAME pull_force\" flag. See '$EXE_NAME pull_force --help'."
+        exit 2
+        ;;
+      *)
+        repo="$1"
+        break
+        ;;
+    esac
+    shift
+  done
 
-  set_repo $1
+  set_repo $repo
 
   draw_heading "Pull Force"
   increase_heading_level
 
-  printf "This will replace your local config with your remote one without synchronization.\n"
-  printf "Are you sure?[y/N]:"
-  read awns
-  [ "$awns" = "y" ] || exit 0
+  if [ $yes -ne 1 ] ; then
+    printf "This will replace your local config with your remote one without synchronization.\n"
+    printf "Are you sure?[y/N]:"
+    read awns
+    [ "$awns" = "y" ] || exit 0
+  fi
 
   git -C "$repo_dir" fetch -q
 
