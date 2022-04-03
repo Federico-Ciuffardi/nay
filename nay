@@ -6,7 +6,7 @@ EXE_NAME="nay"
 
 NAME="Not Another Yogurt"
 
-VERSION="0.1.0"
+VERSION="0.1.1"
 
 HELP_MSG="$NAME $VERSION
 
@@ -396,9 +396,9 @@ function cache2local() {
   export change=0
 
   while IFS= read -r backup; do
-    [ ! -d $backup ] || continue 
+    [ ! -d "$backup" ] || continue 
     relative="`realpath -m --relative-to="$repo_file_dir" "$backup"`"
-    real="`echo $mnt_point | sed 's#/$##g'`/$relative"
+    real="`echo "$mnt_point" | sed 's#/$##g'`/$relative"
 
     if grep -x "$relative" $repo_encrypted &>/dev/null ; then
       set_gpg
@@ -408,8 +408,8 @@ function cache2local() {
       backup="$decrypted"
     fi
 
-    if [ -f $real ] ; then
-        if [ $1 = "pull_force" ] || [ $backup -nt $real ] ;then
+    if [ -f "$real" ] ; then
+        if [ $1 = "pull_force" ] || [ "$backup" -nt "$real" ] ;then
           if ! cmp -s $backup $real ; then
             export change=1 
             printf "M %s\n" "$real"
@@ -421,7 +421,7 @@ function cache2local() {
             touch -r "$backup" "$real" &>/dev/null || (sudo touch -r "$backup" "$real")
           fi
         fi
-    elif [ ! -d $real ] ; then
+    elif [ ! -d "$real" ] ; then
       export change=1
       printf "A %s\n" "$real"
       mkdir -p "${real%/*}" &> /dev/null || sudo mkdir -p "${real%/*}"
@@ -432,22 +432,22 @@ function cache2local() {
 `find "$repo_file_dir"`
 EOF
 
-  if [ $change -eq 0 ] ; then
+  if [ "$change" -eq 0 ] ; then
     printf "No changes\n"
   fi
 
-  if [ -f $repo_file_metadata ] ; then
+  if [ -f "$repo_file_metadata" ] ; then
     while IFS= read -r line; do
-      file=$(echo $mnt_point/$(echo "$line" | cut -d' ' -f1) | sed 's#//#/#g')
-      permissions=$(echo "$line" | cut -d' ' -f2)
-      owner=$(echo "$line" | cut -d' ' -f3)
-      group=$(echo "$line" | cut -d' ' -f4)
-      [ $(stat --format="%a" $file) = $permissions ] || \
-        chmod $permissions $file &> /dev/null || sudo chmod $permissions $file
-      [ $(stat --format="%U" $file) = $owner ] || \
-        chown $owner $file &> /dev/null|| sudo chown $owner $file
-      [ $(stat --format="%G" $file) = $group ] || \
-        chgrp $group $file &> /dev/null|| sudo chgrp $group $file
+      file=$(echo "$mnt_point"/$(echo "$line" | rev | cut -d' ' -f4- | rev ) | sed 's#//#/#g')
+      permissions=$(echo "$line" | rev | cut -d' ' -f3 | rev)
+      owner=$(echo "$line" | rev | cut -d' ' -f2 | rev)
+      group=$(echo "$line" | rev | cut -d' ' -f1 | rev)
+      [ $(stat --format="%a" "$file") = "$permissions" ] || \
+        chmod "$permissions" "$file" &> /dev/null || sudo chmod "$permissions" "$file"
+      [ $(stat --format="%U" "$file") = "$owner" ] || \
+        chown "$owner" "$file" &> /dev/null|| sudo chown "$owner" "$file"
+      [ $(stat --format="%G" "$file") = "$group" ] || \
+        chgrp "$group" "$file" &> /dev/null || sudo chgrp "$group" "$file"
   done << EOF
 `cat $repo_file_metadata`
 EOF
