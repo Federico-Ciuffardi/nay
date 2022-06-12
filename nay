@@ -384,11 +384,14 @@ function remote2cache() {
         ;;
     esac
 
+    old_IFS=$IFS
+    IFS=$'\n'
     for FILE in $(git -C "$repo_dir" ls-files) ; do
       TIME="$(git -C "$repo_dir" log --pretty=format:%cd -n 1 --date=iso -- "$repo_dir/$FILE")"
       TIME="`echo "$TIME" | sed 's/-//g;s/ //;s/://;s/:/\./;s/ .*//'`"
       touch -m -t "$TIME" "$repo_dir/$FILE"
     done
+    IFS=$old_IFS
   fi
 }
 
