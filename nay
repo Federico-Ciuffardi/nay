@@ -447,10 +447,6 @@ EOF
       group=$(echo "$line" | rev | cut -d' ' -f1 | rev)
       [ $(stat --format="%a" "$file") = "$permissions" ] || \
         chmod "$permissions" "$file" &> /dev/null || sudo chmod "$permissions" "$file"
-      [ $(stat --format="%U" "$file") = "$owner" ] || \
-        chown "$owner" "$file" &> /dev/null|| sudo chown "$owner" "$file"
-      [ $(stat --format="%G" "$file") = "$group" ] || \
-        chgrp "$group" "$file" &> /dev/null || sudo chgrp "$group" "$file"
   done << EOF
 `cat $repo_file_metadata`
 EOF
